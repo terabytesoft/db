@@ -18,7 +18,7 @@
     "minimum-stability": "dev",
     "prefer-stable": true,
     "require": {
-        "php": "^7.4|^8.0",
+        "php": "^8.0",
         "ext-json": "*",
         "ext-mbstring": "*",
         "ext-pdo": "*",
@@ -49,11 +49,11 @@
         "psr-4": {
             "Yiisoft\\Db\\Tests\\": "tests",
             "Yiisoft\\ActiveRecord\\Tests\\": "vendor/terabytesoft/active-record/tests",
-            "Yiisoft\\Db\\Mssql\\Tests\\": "vendor/yiisoft/db-mssql/tests",
-            "Yiisoft\\Db\\Mysql\\Tests\\": "vendor/yiisoft/db-mysql/tests",
-            "Yiisoft\\Db\\Oracle\\Tests\\": "vendor/yiisoft/db-oracle/tests",
-            "Yiisoft\\Db\\Pgsql\\Tests\\": "vendor/yiisoft/db-pgsql/tests",
-            "Yiisoft\\Db\\Sqlite\\Tests\\": "vendor/yiisoft/db-sqlite/tests"
+            "Yiisoft\\Db\\Mssql\\Tests\\": "vendor/terabytesoft/db-mssql/tests",
+            "Yiisoft\\Db\\Mysql\\Tests\\": "vendor/terabytesoft/db-mysql/tests",
+            "Yiisoft\\Db\\Oracle\\Tests\\": "vendor/terabytesoft/db-oracle/tests",
+            "Yiisoft\\Db\\Pgsql\\Tests\\": "vendor/terabytesoft/db-pgsql/tests",
+            "Yiisoft\\Db\\Sqlite\\Tests\\": "vendor/terabytesoft/db-sqlite/tests"
         }
     },
     "extra": {
