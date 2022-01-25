@@ -151,9 +151,6 @@ jobs:
       - name: Install db-oracle
         run: composer require terabytesoft/db-oracle --prefer-dist --no-interaction --no-progress --optimize-autoloader --ansi
 
-      - name: Install db-redis
-        run: composer require terabytesoft/db-redis --prefer-dist --no-interaction --no-progress --optimize-autoloader --ansi
-
       - name: Install db-sqlite
         run: composer require terabytesoft/db-sqlite --prefer-dist --no-interaction --no-progress --optimize-autoloader --ansi
 
