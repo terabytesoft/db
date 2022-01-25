@@ -1,0 +1,66 @@
+{
+    "name": "terabytesoft/db",
+    "type": "library",
+    "description": "Yii DataBase Library",
+    "keywords": [
+        "yii",
+        "database"
+    ],
+    "homepage": "http://www.yiiframework.com/",
+    "license": "BSD-3-Clause",
+    "support": {
+        "source": "https://github.com/yiisoft/db",
+        "issues": "https://github.com/yiisoft/db/issues",
+        "forum": "http://www.yiiframework.com/forum/",
+        "wiki": "http://www.yiiframework.com/wiki/",
+        "irc": "irc://irc.freenode.net/yii"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "require": {
+        "php": "^7.4|^8.0",
+        "ext-json": "*",
+        "ext-mbstring": "*",
+        "ext-pdo": "*",
+        "psr/log": "^1.1",
+        "yiisoft/arrays": "^2.0",
+        "yiisoft/cache": "^1.0",
+        "yiisoft/data": "3.0.x-dev",
+        "yiisoft/log": "^1.0",
+        "yiisoft/profiler": "^1.0",
+        "yiisoft/strings": "^2.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.4",
+        "roave/infection-static-analysis-plugin": "^1.14",
+        "vimeo/psalm": "^4.2",
+        "yiisoft/aliases": "^1.1|^2.0",
+        "yiisoft/di": "^1.0",
+        "yiisoft/event-dispatcher": "^1.0",
+        "yiisoft/json": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Yiisoft\\Db\\": "src"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Yiisoft\\Db\\Tests\\": "tests",
+            "Yiisoft\\ActiveRecord\\Tests\\": "vendor/yiisoft/active-record/tests",
+            "Yiisoft\\Db\\Mssql\\Tests\\": "vendor/yiisoft/db-mssql/tests",
+            "Yiisoft\\Db\\Mysql\\Tests\\": "vendor/yiisoft/db-mysql/tests",
+            "Yiisoft\\Db\\Oracle\\Tests\\": "vendor/yiisoft/db-oracle/tests",
+            "Yiisoft\\Db\\Pgsql\\Tests\\": "vendor/yiisoft/db-pgsql/tests",
+            "Yiisoft\\Db\\Sqlite\\Tests\\": "vendor/yiisoft/db-sqlite/tests"
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "3.0.x-dev"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
