@@ -166,8 +166,9 @@ jobs:
         if: matrix.php == '8.0'
         run: vendor/bin/phpunit --colors=always
 
-      - name: Upload code coverage scrutinizer on Linux php 7.4
-        if: matrix.php == '7.4'
-        run: |
-          wget https://scrutinizer-ci.com/ocular.phar
-          php ocular.phar code-coverage:upload --format=php-clover coverage.clover
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.php == '8.0'
+        uses: codecov/codecov-action@v2
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml
