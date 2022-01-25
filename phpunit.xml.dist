@@ -14,7 +14,7 @@
   </php>
   <testsuites>
     <testsuite name="ActiveRecord">
-      <directory>./vendor/yiisoft/active-record/tests</directory>
+      <directory>./vendor/terabytesoft/active-record/tests</directory>
     </testsuite>
     <testsuite name="Mssql">
       <directory>./vendor/yiisoft/db-mssql/tests</directory>
