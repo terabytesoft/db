@@ -342,7 +342,7 @@ abstract class Schema
     public function getLastInsertID(string $sequenceName = ''): string
     {
         if ($this->db->isActive()) {
-            return $this->db->getPDO()->lastInsertId(
+            return $this->db->getDriver()->getPDO()->lastInsertId(
                 $sequenceName === '' ? null : $this->quoteTableName($sequenceName)
             );
         }
@@ -763,8 +763,8 @@ abstract class Schema
     {
         return [
             __CLASS__,
-            $this->db->getDsn(),
-            $this->db->getUsername(),
+            $this->db->getDriver()->getDsn(),
+            $this->db->getDriver()->getUsername(),
             $this->getRawTableName($name),
         ];
     }
@@ -780,8 +780,8 @@ abstract class Schema
     {
         return md5(serialize([
             __CLASS__,
-            $this->db->getDsn(),
-            $this->db->getUsername(),
+            $this->db->getDriver()->getDsn(),
+            $this->db->getDriver()->getUsername(),
         ]));
     }
 

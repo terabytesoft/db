@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Yiisoft\Db\Connection;
 
 use PDO;
-use PDOException;
-use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
 use Throwable;
 use Yiisoft\Cache\Dependency\Dependency;
@@ -25,7 +23,6 @@ use Yiisoft\Db\Transaction\Transaction;
 
 use function array_keys;
 use function str_replace;
-use function strncmp;
 
 /**
  * Connection represents a connection to a database via [PDO](http://php.net/manual/en/book.pdo.php).
@@ -35,7 +32,7 @@ use function strncmp;
  * [PDO PHP extension](http://php.net/manual/en/book.pdo.php).
  *
  * Connection supports database replication and read-write splitting. In particular, a Connection component can be
- * configured with multiple {@see setMaster()} and {@see setSlave()}. It will do load balancing and failover by
+ * configured with multiple {@see setMaster()} and {@see setSlave()}. It will do load balancing and fail over by
  * choosing appropriate servers. It will also automatically direct read operations to the slaves and write operations
  * to the masters.
  *
@@ -166,88 +163,33 @@ abstract class Connection implements ConnectionInterface
     use LoggerAwareTrait;
     use ProfilerAwareTrait;
 
-    private string $dsn;
-    private ?string $username = null;
-    private ?string $password = null;
-    private array $attributes = [];
-    private ?string $charset = null;
+    protected ?Connection $master = null;
+    protected ?Connection $slave = null;
+    protected ?Transaction $transaction = null;
     private ?bool $emulatePrepare = null;
     private string $tablePrefix = '';
     private bool $enableSavepoint = true;
     private int $serverRetryInterval = 600;
     private bool $enableSlaves = true;
     private array $slaves = [];
-    private array $masters = [];
+    protected array $masters = [];
     private bool $shuffleMasters = true;
     private array $quotedTableNames = [];
     private array $quotedColumnNames = [];
-    private ?Connection $master = null;
-    private ?Connection $slave = null;
-    private ?PDO $pdo = null;
     private QueryCache $queryCache;
-    private ?Transaction $transaction = null;
 
-    public function __construct(string $dsn, QueryCache $queryCache)
+    /**
+     * Establishes a DB connection.
+     *
+     * It does nothing if a DB connection has already been established.
+     *
+     * @throws Exception|InvalidConfigException if connection fails
+     */
+    abstract public function open(): void;
+
+    public function __construct(QueryCache $queryCache)
     {
-        $this->dsn = $dsn;
         $this->queryCache = $queryCache;
-    }
-
-    /**
-     * Creates a command for execution.
-     *
-     * @param string|null $sql the SQL statement to be executed
-     * @param array $params the parameters to be bound to the SQL statement
-     *
-     * @throws Exception|InvalidConfigException
-     *
-     * @return Command the DB command
-     */
-    abstract public function createCommand(?string $sql = null, array $params = []): Command;
-
-    /**
-     * Returns the schema information for the database opened by this connection.
-     *
-     * @return Schema the schema information for the database opened by this connection.
-     */
-    abstract public function getSchema(): Schema;
-
-    /**
-     * Creates the PDO instance.
-     *
-     * This method is called by {@see open} to establish a DB connection. The default implementation will create a PHP
-     * PDO instance. You may override this method if the default PDO needs to be adapted for certain DBMS.
-     *
-     * @return PDO the pdo instance
-     */
-    abstract protected function createPdoInstance(): PDO;
-
-    /**
-     * Initializes the DB connection.
-     *
-     * This method is invoked right after the DB connection is established.
-     *
-     * The default implementation turns on `PDO::ATTR_EMULATE_PREPARES`.
-     *
-     * if {@see emulatePrepare} is true, and sets the database {@see charset} if it is not empty.
-     *
-     * It then triggers an {@see EVENT_AFTER_OPEN} event.
-     */
-    abstract protected function initConnection(): void;
-
-    /**
-     * Reset the connection after cloning.
-     */
-    public function __clone()
-    {
-        $this->master = null;
-        $this->slave = null;
-        $this->transaction = null;
-
-        if (strncmp($this->dsn, 'sqlite::memory:', 15) !== 0) {
-            /** reset PDO connection, unless its sqlite in-memory, which can only have one connection */
-            $this->pdo = null;
-        }
     }
 
     /**
@@ -260,7 +202,6 @@ abstract class Connection implements ConnectionInterface
         $fields = (array) $this;
 
         unset(
-            $fields["\000" . __CLASS__ . "\000" . 'pdo'],
             $fields["\000" . __CLASS__ . "\000" . 'master'],
             $fields["\000" . __CLASS__ . "\000" . 'slave'],
             $fields["\000" . __CLASS__ . "\000" . 'transaction'],
@@ -268,6 +209,11 @@ abstract class Connection implements ConnectionInterface
         );
 
         return array_keys($fields);
+    }
+
+    public function areSlavesEnabled(): bool
+    {
+        return $this->enableSlaves;
     }
 
     /**
@@ -342,44 +288,9 @@ abstract class Connection implements ConnectionInterface
         return $result;
     }
 
-    public function getAttributes(): array
-    {
-        return $this->attributes;
-    }
-
-    public function getCharset(): ?string
-    {
-        return $this->charset;
-    }
-
-    public function getDsn(): string
-    {
-        return $this->dsn;
-    }
-
     public function getEmulatePrepare(): ?bool
     {
         return $this->emulatePrepare;
-    }
-
-    public function isSavepointEnabled(): bool
-    {
-        return $this->enableSavepoint;
-    }
-
-    public function areSlavesEnabled(): bool
-    {
-        return $this->enableSlaves;
-    }
-
-    /**
-     * Returns a value indicating whether the DB connection is established.
-     *
-     * @return bool whether the DB connection is established
-     */
-    public function isActive(): bool
-    {
-        return $this->pdo !== null;
     }
 
     /**
@@ -418,40 +329,6 @@ abstract class Connection implements ConnectionInterface
     }
 
     /**
-     * Returns the PDO instance for the currently active master connection.
-     *
-     * This method will open the master DB connection and then return {@see pdo}.
-     *
-     * @throws Exception
-     *
-     * @return PDO the PDO instance for the currently active master connection.
-     */
-    public function getMasterPdo(): PDO
-    {
-        $this->open();
-        return $this->pdo;
-    }
-
-    public function getPassword(): ?string
-    {
-        return $this->password;
-    }
-
-    /**
-     * The PHP PDO instance associated with this DB connection. This property is mainly managed by {@see open()} and
-     * {@see close()} methods. When a DB connection is active, this property will represent a PDO instance; otherwise,
-     * it will be null.
-     *
-     * @return PDO|null
-     *
-     * {@see pdoClass}
-     */
-    public function getPDO(): ?PDO
-    {
-        return $this->pdo;
-    }
-
-    /**
      * Returns the query builder for the current DB connection.
      *
      * @return QueryBuilder the query builder for the current DB connection.
@@ -461,6 +338,9 @@ abstract class Connection implements ConnectionInterface
         return $this->getSchema()->getQueryBuilder();
     }
 
+    /**
+     * @throws Exception
+     */
     public function getServerVersion(): string
     {
         return $this->getSchema()->getServerVersion();
@@ -491,17 +371,6 @@ abstract class Connection implements ConnectionInterface
         return $this->slave === null && $fallbackToMaster ? $this : $this->slave;
     }
 
-    public function getSlavePdo(bool $fallbackToMaster = true): ?PDO
-    {
-        $db = $this->getSlave(false);
-
-        if ($db === null) {
-            return $fallbackToMaster ? $this->getMasterPdo() : null;
-        }
-
-        return $db->getPdo();
-    }
-
     public function getTablePrefix(): string
     {
         return $this->tablePrefix;
@@ -522,9 +391,9 @@ abstract class Connection implements ConnectionInterface
         return $this->transaction && $this->transaction->isActive() ? $this->transaction : null;
     }
 
-    public function getUsername(): ?string
+    public function isSavepointEnabled(): bool
     {
-        return $this->username;
+        return $this->enableSavepoint;
     }
 
     /**
@@ -562,192 +431,6 @@ abstract class Connection implements ConnectionInterface
         $result = $callable($this);
         $queryCache->removeLastInfo();
         return $result;
-    }
-
-    /**
-     * Establishes a DB connection.
-     *
-     * It does nothing if a DB connection has already been established.
-     *
-     * @throws Exception|InvalidConfigException if connection fails
-     */
-    public function open(): void
-    {
-        if (!empty($this->pdo)) {
-            return;
-        }
-
-        if (!empty($this->masters)) {
-            $db = $this->getMaster();
-
-            if ($db !== null) {
-                $this->pdo = $db->getPDO();
-
-                return;
-            }
-
-            throw new InvalidConfigException('None of the master DB servers is available.');
-        }
-
-        if (empty($this->dsn)) {
-            throw new InvalidConfigException('Connection::dsn cannot be empty.');
-        }
-
-        $token = 'Opening DB connection: ' . $this->dsn;
-
-        try {
-            if ($this->logger !== null) {
-                $this->logger->log(LogLevel::INFO, $token);
-            }
-
-            if ($this->profiler !== null) {
-                $this->profiler->begin($token, [__METHOD__]);
-            }
-
-            $this->pdo = $this->createPdoInstance();
-
-            $this->initConnection();
-
-            if ($this->profiler !== null) {
-                $this->profiler->end($token, [__METHOD__]);
-            }
-        } catch (PDOException $e) {
-            if ($this->profiler !== null) {
-                $this->profiler->end($token, [__METHOD__]);
-            }
-
-            if ($this->logger !== null) {
-                $this->logger->log(LogLevel::ERROR, $token);
-            }
-
-            throw new Exception($e->getMessage(), $e->errorInfo, $e);
-        }
-    }
-
-    /**
-     * Closes the currently active DB connection.
-     *
-     * It does nothing if the connection is already closed.
-     */
-    public function close(): void
-    {
-        if ($this->master) {
-            if ($this->pdo === $this->master->getPDO()) {
-                $this->pdo = null;
-            }
-
-            $this->master->close();
-
-            $this->master = null;
-        }
-
-        if ($this->pdo !== null) {
-            if ($this->logger !== null) {
-                $this->logger->log(LogLevel::DEBUG, 'Closing DB connection: ' . $this->dsn . ' ' . __METHOD__);
-            }
-
-            $this->pdo = null;
-            $this->transaction = null;
-        }
-
-        if ($this->slave) {
-            $this->slave->close();
-            $this->slave = null;
-        }
-    }
-
-    /**
-     * Rolls back given {@see Transaction} object if it's still active and level match. In some cases rollback can fail,
-     * so this method is fail safe. Exceptions thrown from rollback will be caught and just logged with
-     * {@see logger->log()}.
-     *
-     * @param Transaction $transaction Transaction object given from {@see beginTransaction()}.
-     * @param int $level Transaction level just after {@see beginTransaction()} call.
-     */
-    private function rollbackTransactionOnLevel(Transaction $transaction, int $level): void
-    {
-        if ($transaction->isActive() && $transaction->getLevel() === $level) {
-            /**
-             * {@see https://github.com/yiisoft/yii2/pull/13347}
-             */
-            try {
-                $transaction->rollBack();
-            } catch (Exception $e) {
-                if ($this->logger !== null) {
-                    $this->logger->log(LogLevel::ERROR, $e, [__METHOD__]);
-                    /** hide this exception to be able to continue throwing original exception outside */
-                }
-            }
-        }
-    }
-
-    /**
-     * Opens the connection to a server in the pool.
-     *
-     * This method implements the load balancing among the given list of the servers.
-     *
-     * Connections will be tried in random order.
-     *
-     * @param array $pool the list of connection configurations in the server pool
-     *
-     * @return Connection|null the opened DB connection, or `null` if no server is available
-     */
-    protected function openFromPool(array $pool): ?self
-    {
-        shuffle($pool);
-        return $this->openFromPoolSequentially($pool);
-    }
-
-    /**
-     * Opens the connection to a server in the pool.
-     *
-     * This method implements the load balancing among the given list of the servers.
-     *
-     * Connections will be tried in sequential order.
-     *
-     * @param array $pool
-     *
-     * @return ConnectionInterface|null the opened DB connection, or `null` if no server is available
-     */
-    protected function openFromPoolSequentially(array $pool): ?ConnectionInterface
-    {
-        if (!$pool) {
-            return null;
-        }
-
-        foreach ($pool as $poolConnetion) {
-            $key = [__METHOD__, $poolConnetion->getDsn()];
-
-            if (
-                $this->getSchema()->getSchemaCache()->isEnabled() &&
-                $this->getSchema()->getSchemaCache()->getOrSet($key, null, $this->serverRetryInterval)
-            ) {
-                /** should not try this dead server now */
-                continue;
-            }
-
-            try {
-                $poolConnetion->open();
-
-                return $poolConnetion;
-            } catch (Exception $e) {
-                if ($this->logger !== null) {
-                    $this->logger->log(
-                        LogLevel::WARNING,
-                        "Connection ({$poolConnetion->getDsn()}) failed: " . $e->getMessage() . ' ' . __METHOD__
-                    );
-                }
-
-                if ($this->getSchema()->getSchemaCache()->isEnabled()) {
-                    /** mark this server as dead and only retry it after the specified interval */
-                    $this->getSchema()->getSchemaCache()->set($key, 1, $this->serverRetryInterval);
-                }
-
-                return null;
-            }
-        }
-
-        return null;
     }
 
     public function quoteColumnName(string $name): string
@@ -794,37 +477,8 @@ abstract class Connection implements ConnectionInterface
     }
 
     /**
-     * PDO attributes (name => value) that should be set when calling {@see open()} to establish a DB connection.
-     * Please refer to the [PHP manual](http://php.net/manual/en/pdo.setattribute.php) for details about available
-     * attributes.
-     *
-     * @param array $value
-     */
-    public function setAttributes(array $value): void
-    {
-        $this->attributes = $value;
-    }
-
-    /**
-     * The charset used for database connection. The property is only used for MySQL, PostgreSQL databases. Defaults to
-     * null, meaning using default charset as configured by the database.
-     *
-     * For Oracle Database, the charset must be specified in the {@see dsn}, for example for UTF-8 by appending
-     * `;charset=UTF-8` to the DSN string.
-     *
-     * The same applies for if you're using GBK or BIG5 charset with MySQL, then it's highly recommended to specify
-     * charset via {@see dsn} like `'mysql:dbname=mydatabase;host=127.0.0.1;charset=GBK;'`.
-     *
-     * @param string|null $value
-     */
-    public function setCharset(?string $value): void
-    {
-        $this->charset = $value;
-    }
-
-    /**
      * Whether to turn on prepare emulation. Defaults to false, meaning PDO will use the native prepare support if
-     * available. For some databases (such as MySQL), this may need to be set true so that PDO can emulate the prepare
+     * available. For some databases (such as MySQL), this may need to be set true so that PDO can emulate to prepare
      * support to bypass the buggy native prepare support. The default value is null, which means the PDO
      * ATTR_EMULATE_PREPARES value will not be changed.
      *
@@ -855,21 +509,11 @@ abstract class Connection implements ConnectionInterface
      * Set connection for master server, you can specify multiple connections, adding the id for each one.
      *
      * @param string $key index master connection.
-     * @param ConnectionInterface $db The connection every master.
+     * @param ConnectionInterface $master The connection every master.
      */
     public function setMaster(string $key, ConnectionInterface $master): void
     {
         $this->masters[$key] = $master;
-    }
-
-    /**
-     * The password for establishing DB connection. Defaults to `null` meaning no password to use.
-     *
-     * @param string|null $value
-     */
-    public function setPassword(?string $value): void
-    {
-        $this->password = $value;
     }
 
     /**
@@ -926,16 +570,6 @@ abstract class Connection implements ConnectionInterface
     public function setTablePrefix(string $value): void
     {
         $this->tablePrefix = $value;
-    }
-
-    /**
-     * The username for establishing DB connection. Defaults to `null` meaning no username to use.
-     *
-     * @param string|null $value
-     */
-    public function setUsername(?string $value): void
-    {
-        $this->username = $value;
     }
 
     /**
@@ -1007,5 +641,99 @@ abstract class Connection implements ConnectionInterface
         }
 
         return $result;
+    }
+
+    /**
+     * Opens the connection to a server in the pool.
+     *
+     * This method implements the load balancing among the given list of the servers.
+     *
+     * Connections will be tried in random order.
+     *
+     * @param array $pool the list of connection configurations in the server pool
+     *
+     * @return Connection|null the opened DB connection, or `null` if no server is available
+     */
+    protected function openFromPool(array $pool): ?self
+    {
+        shuffle($pool);
+        return $this->openFromPoolSequentially($pool);
+    }
+
+    /**
+     * Opens the connection to a server in the pool.
+     *
+     * This method implements the load balancing among the given list of the servers.
+     *
+     * Connections will be tried in sequential order.
+     *
+     * @param array $pool
+     *
+     * @return ConnectionInterface|null the opened DB connection, or `null` if no server is available
+     */
+    protected function openFromPoolSequentially(array $pool): ?ConnectionInterface
+    {
+        if (!$pool) {
+            return null;
+        }
+
+        foreach ($pool as $poolConnection) {
+            $key = [__METHOD__, $poolConnection->getDriver()->getDsn()];
+
+            if (
+                $this->getSchema()->getSchemaCache()->isEnabled() &&
+                $this->getSchema()->getSchemaCache()->getOrSet($key, null, $this->serverRetryInterval)
+            ) {
+                /** should not try this dead server now */
+                continue;
+            }
+
+            try {
+                $poolConnection->open();
+
+                return $poolConnection;
+            } catch (Exception $e) {
+                if ($this->logger !== null) {
+                    $this->logger->log(
+                        LogLevel::WARNING,
+                        "Connection ({$poolConnection->getDriver()->getDsn()}) failed: " . $e->getMessage() . ' ' . __METHOD__
+                    );
+                }
+
+                if ($this->getSchema()->getSchemaCache()->isEnabled()) {
+                    /** mark this server as dead and only retry it after the specified interval */
+                    $this->getSchema()->getSchemaCache()->set($key, 1, $this->serverRetryInterval);
+                }
+
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Rolls back given {@see Transaction} object if it's still active and level match. In some cases rollback can fail,
+     * so this method is fail-safe. Exceptions thrown from rollback will be caught and just logged with
+     * {@see logger->log()}.
+     *
+     * @param Transaction $transaction Transaction object given from {@see beginTransaction()}.
+     * @param int $level Transaction level just after {@see beginTransaction()} call.
+     */
+    private function rollbackTransactionOnLevel(Transaction $transaction, int $level): void
+    {
+        if ($transaction->isActive() && $transaction->getLevel() === $level) {
+            /**
+             * {@see https://github.com/yiisoft/yii2/pull/13347}
+             */
+            try {
+                $transaction->rollBack();
+            } catch (Exception $e) {
+                if ($this->logger !== null) {
+                    $this->logger->log(LogLevel::ERROR, $e, [__METHOD__]);
+                    /** hide this exception to be able to continue throwing original exception outside */
+                }
+            }
+        }
     }
 }

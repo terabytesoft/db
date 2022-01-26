@@ -134,7 +134,7 @@ class Transaction
                 );
             }
 
-            $this->db->getPDO()->beginTransaction();
+            $this->db->getDriver()->getPDO()->beginTransaction();
             $this->level = 1;
 
             return;
@@ -179,7 +179,7 @@ class Transaction
                 $this->logger->log(LogLevel::DEBUG, 'Commit transaction ' . __METHOD__);
             }
 
-            $this->db->getPDO()->commit();
+            $this->db->getDriver()->getPDO()->commit();
 
             return;
         }
@@ -221,7 +221,7 @@ class Transaction
                 $this->logger->log(LogLevel::INFO, 'Roll back transaction ' . __METHOD__);
             }
 
-            $this->db->getPDO()->rollBack();
+            $this->db->getDriver()->getPDO()->rollBack();
 
             return;
         }

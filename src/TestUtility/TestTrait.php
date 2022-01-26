@@ -13,6 +13,7 @@ use Yiisoft\Cache\CacheInterface;
 use Yiisoft\Db\Cache\QueryCache;
 use Yiisoft\Db\Cache\SchemaCache;
 use Yiisoft\Db\Connection\ConnectionInterface;
+use Yiisoft\Db\Driver\PDODriverInterface;
 use Yiisoft\Log\Logger;
 use Yiisoft\Profiler\Profiler;
 use Yiisoft\Profiler\ProfilerInterface;
@@ -60,19 +61,12 @@ trait TestTrait
         return $this->cache;
     }
 
-    protected function createConnection(string $dsn = null): ?ConnectionInterface
+    protected function createConnection(PDODriverInterface $PDODriver): ConnectionInterface
     {
-        $db = null;
-
-        if ($dsn !== null) {
-            $class = self::DB_CONNECTION_CLASS;
-            $db = new $class($dsn, $this->createQueryCache(), $this->createSchemaCache());
-            $db->setLogger($this->createLogger());
-            $db->setProfiler($this->createProfiler());
-            $db->setUsername(self::DB_USERNAME);
-            $db->setPassword(self::DB_PASSWORD);
-            $db->setCharset(self::DB_CHARSET);
-        }
+        $class = self::DB_CONNECTION_CLASS;
+        $db = new $class($PDODriver, $this->createQueryCache(), $this->createSchemaCache());
+        $db->setLogger($this->createLogger());
+        $db->setProfiler($this->createProfiler());
 
         return $db;
     }
@@ -121,7 +115,9 @@ trait TestTrait
         }
 
         if ($reset === false) {
-            return $this->createConnection(self::DB_DSN);
+            $pdoClass = self::DB_DRIVER_CLASS;
+            $PDODriver = new $pdoClass(self::DB_DSN, self::DB_USERNAME, self::DB_PASSWORD);
+            return $this->createConnection($PDODriver);
         }
 
         try {
@@ -214,7 +210,7 @@ trait TestTrait
 
         foreach ($lines as $line) {
             if (trim($line) !== '') {
-                $this->connection->getPDO()->exec($line);
+                $this->connection->getDriver()->getPDO()->exec($line);
             }
         }
     }

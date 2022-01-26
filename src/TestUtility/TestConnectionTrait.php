@@ -22,7 +22,7 @@ trait TestConnectionTrait
 
         $serialized = serialize($db);
 
-        $this->assertNotNull($db->getPDO());
+        $this->assertNotNull($db->getDriver()->getPDO());
 
         $unserialized = unserialize($serialized);
 
@@ -354,34 +354,34 @@ trait TestConnectionTrait
         $db = $this->getConnection();
 
         $this->assertNull($db->getTransaction());
-        $this->assertNull($db->getPDO());
+        $this->assertNull($db->getDriver()->getPDO());
 
         $db->open();
 
         $this->assertNull($db->getTransaction());
-        $this->assertNotNull($db->getPDO());
+        $this->assertNotNull($db->getDriver()->getPDO());
 
         $conn2 = clone $db;
 
         $this->assertNull($db->getTransaction());
-        $this->assertNotNull($db->getPDO());
+        $this->assertNotNull($db->getDriver()->getPDO());
 
         $this->assertNull($conn2->getTransaction());
-        $this->assertNull($conn2->getPDO());
+        $this->assertNull($conn2->getDriver()->getPDO());
 
         $db->beginTransaction();
 
         $this->assertNotNull($db->getTransaction());
-        $this->assertNotNull($db->getPDO());
+        $this->assertNotNull($db->getDriver()->getPDO());
 
         $this->assertNull($conn2->getTransaction());
-        $this->assertNull($conn2->getPDO());
+        $this->assertNull($conn2->getDriver()->getPDO());
 
         $conn3 = clone $db;
 
         $this->assertNotNull($db->getTransaction());
-        $this->assertNotNull($db->getPDO());
-        $this->assertNull($conn3->getTransaction());
-        $this->assertNull($conn3->getPDO());
+        $this->assertNotNull($db->getDriver()->getPDO());
+        $this->assertNull($conn3->getDriver()->getTransaction());
+        $this->assertNull($conn3->getDriver()->getPDO());
     }
 }

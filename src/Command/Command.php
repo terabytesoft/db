@@ -1376,8 +1376,8 @@ class Command
             __CLASS__,
             $method,
             $fetchMode,
-            $this->db->getDsn(),
-            $this->db->getUsername(),
+            $this->db->getDriver()->getDsn(),
+            $this->db->getDriver()->getUsername(),
             $rawSql,
         ];
     }

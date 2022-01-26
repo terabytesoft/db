@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Connection;
 
-use PDO;
 use Yiisoft\Db\Command\Command;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\InvalidConfigException;
@@ -27,24 +26,11 @@ interface ConnectionInterface
     public function createCommand(?string $sql = null, array $params = []): Command;
 
     /**
-     * Returns the name of the DB driver.
+     * Closes the currently active DB connection.
      *
-     * @return string name of the DB driver
+     * It does nothing if the connection is already closed.
      */
-    public function getDriverName(): string;
-
-    /**
-     * @return string the Data Source Name, or DSN, contains the information required to connect to the database.
-     *
-     * Please refer to the [PHP manual](https://secure.php.net/manual/en/pdo.construct.php) on the format of the DSN
-     * string.
-     *
-     * For [SQLite](https://secure.php.net/manual/en/ref.pdo-sqlite.connection.php) you may use a
-     * [path alias](guide:concept-aliases) for specifying the database path, e.g. `sqlite:@app/data/db.sql`.
-     *
-     * {@see charset}
-     */
-    public function getDsn(): string;
+    public function close(): void;
 
     /**
      * Returns the schema information for the database opened by this connection.
@@ -71,12 +57,13 @@ interface ConnectionInterface
     public function getTableSchema(string $name, $refresh = false): ?TableSchema;
 
     /**
-     * Whether to enable read/write splitting by using {@see setSlaves()} to read data. Note that if {@see setSlaves()}
-     * is empty, read/write splitting will NOT be enabled no matter what value this property takes.
+     * Establishes a DB connection.
      *
-     * @param bool $value
+     * It does nothing if a DB connection has already been established.
+     *
+     * @throws Exception|InvalidConfigException if connection fails
      */
-    public function setEnableSlaves(bool $value): void;
+    public function open(): void;
 
     /**
      * Quotes a column name for use in a query.
@@ -90,6 +77,19 @@ interface ConnectionInterface
      * @return string the properly quoted column name
      */
     public function quoteColumnName(string $name): string;
+
+    /**
+     * Processes a SQL statement by quoting table and column names that are enclosed within double brackets.
+     *
+     * Tokens enclosed within double curly brackets are treated as table names, while tokens enclosed within double
+     * square brackets are column names. They will be quoted accordingly. Also, the percentage character "%" at the
+     * beginning or ending of a table name will be replaced with {@see tablePrefix}.
+     *
+     * @param string $sql the SQL to be quoted
+     *
+     * @return string the quoted SQL
+     */
+    public function quoteSql(string $sql): string;
 
     /**
      * Quotes a table name for use in a query.
@@ -120,17 +120,10 @@ interface ConnectionInterface
     public function quoteValue($value);
 
     /**
-     * Returns the PDO instance for the currently active slave connection.
+     * Whether to enable read/write splitting by using {@see setSlaves()} to read data. Note that if {@see setSlaves()}
+     * is empty, read/write splitting will NOT be enabled no matter what value this property takes.
      *
-     * When {@see enableSlaves} is true, one of the slaves will be used for read queries, and its PDO instance will be
-     * returned by this method.
-     *
-     * @param bool $fallbackToMaster whether to return a master PDO in case none of the slave connections is available.
-     *
-     * @throws Exception
-     *
-     * @return PDO the PDO instance for the currently active slave connection. `null` is returned if no slave connection
-     * is available and `$fallbackToMaster` is false.
+     * @param bool $value
      */
-    public function getSlavePdo(bool $fallbackToMaster = true): ?PDO;
+    public function setEnableSlaves(bool $value): void;
 }
