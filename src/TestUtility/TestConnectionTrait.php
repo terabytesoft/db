@@ -27,7 +27,7 @@ trait TestConnectionTrait
         $unserialized = unserialize($serialized);
 
         $this->assertInstanceOf(ConnectionInterface::class, $unserialized);
-        $this->assertNull($unserialized->getPDO());
+        $this->assertNull($unserialized->getDriver()->getPDO());
         $this->assertEquals(123, $unserialized->createCommand('SELECT 123')->queryScalar());
     }
 
@@ -381,7 +381,7 @@ trait TestConnectionTrait
 
         $this->assertNotNull($db->getTransaction());
         $this->assertNotNull($db->getDriver()->getPDO());
-        $this->assertNull($conn3->getDriver()->getTransaction());
+        $this->assertNull($conn3->getTransaction());
         $this->assertNull($conn3->getDriver()->getPDO());
     }
 }
