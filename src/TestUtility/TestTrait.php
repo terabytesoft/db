@@ -13,7 +13,7 @@ use Yiisoft\Cache\CacheInterface;
 use Yiisoft\Db\Cache\QueryCache;
 use Yiisoft\Db\Cache\SchemaCache;
 use Yiisoft\Db\Connection\ConnectionInterface;
-use Yiisoft\Db\Driver\PDODriverInterface;
+use Yiisoft\Db\Driver\DriverInterface;
 use Yiisoft\Log\Logger;
 use Yiisoft\Profiler\Profiler;
 use Yiisoft\Profiler\ProfilerInterface;
@@ -61,7 +61,7 @@ trait TestTrait
         return $this->cache;
     }
 
-    protected function createConnection(PDODriverInterface $PDODriver): ConnectionInterface
+    protected function createConnection(DriverInterface $PDODriver): ConnectionInterface
     {
         $class = self::DB_CONNECTION_CLASS;
         $db = new $class($PDODriver, $this->createQueryCache(), $this->createSchemaCache());

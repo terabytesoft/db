@@ -12,6 +12,7 @@ use Yiisoft\Db\AwareTrait\LoggerAwareTrait;
 use Yiisoft\Db\AwareTrait\ProfilerAwareTrait;
 use Yiisoft\Db\Cache\QueryCache;
 use Yiisoft\Db\Command\Command;
+use Yiisoft\Db\Driver\DriverInterface;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\InvalidCallException;
 use Yiisoft\Db\Exception\InvalidConfigException;
@@ -336,7 +337,7 @@ abstract class Connection implements ConnectionInterface
      * @param bool $fallbackToMaster whether to return a master connection in case there is no slave connection
      * available.
      *
-     * @return Connection the currently active slave connection. `null` is returned if there is no slave available and
+     * @return static the currently active slave connection. `null` is returned if there is no slave available and
      * `$fallbackToMaster` is false.
      */
     public function getSlave(bool $fallbackToMaster = true): ?self
