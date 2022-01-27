@@ -11,13 +11,11 @@ use Yiisoft\Db\AwareTrait\LoggerAwareTrait;
 use Yiisoft\Db\AwareTrait\ProfilerAwareTrait;
 use Yiisoft\Db\Cache\QueryCache;
 use Yiisoft\Db\Command\Command;
-use Yiisoft\Db\Driver\DriverInterface;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\InvalidCallException;
 use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Exception\NotSupportedException;
 use Yiisoft\Db\Query\QueryBuilder;
-use Yiisoft\Db\Schema\Schema;
 use Yiisoft\Db\Schema\TableSchema;
 use Yiisoft\Db\Transaction\Transaction;
 
@@ -42,7 +40,6 @@ abstract class Connection implements ConnectionInterface
     private int $serverRetryInterval = 600;
     private bool $shuffleMasters = true;
     private string $tablePrefix = '';
-    private QueryCache $queryCache;
 
     /**
      * Establishes a DB connection.
@@ -53,9 +50,8 @@ abstract class Connection implements ConnectionInterface
      */
     abstract public function open(): void;
 
-    public function __construct(QueryCache $queryCache)
+    public function __construct(private QueryCache $queryCache)
     {
-        $this->queryCache = $queryCache;
     }
 
     /**
@@ -144,7 +140,7 @@ abstract class Connection implements ConnectionInterface
      * {@see queryCache}
      * {@see noCache()}
      */
-    public function cache(callable $callable, int $duration = null, Dependency $dependency = null)
+    public function cache(callable $callable, int $duration = null, Dependency $dependency = null): mixed
     {
         $this->queryCache->setInfo(
             [$duration ?? $this->queryCache->getDuration(), $dependency]
@@ -181,7 +177,8 @@ abstract class Connection implements ConnectionInterface
      *
      * If this method is called for the first time, it will try to open a master connection.
      *
-     * @return Connection the currently active master connection. `null` is returned if there is no master available.
+     * @return Connection|null the currently active master connection. `null` is returned if there is no master
+     * available.
      */
     public function getMaster(): ?self
     {
@@ -221,8 +218,8 @@ abstract class Connection implements ConnectionInterface
      * @param bool $fallbackToMaster whether to return a master connection in case there is no slave connection
      * available.
      *
-     * @return static the currently active slave connection. `null` is returned if there is no slave available and
-     * `$fallbackToMaster` is false.
+     * @return Connection|null the currently active slave connection. `null` is returned if there is no slave available
+     * and `$fallbackToMaster` is false.
      */
     public function getSlave(bool $fallbackToMaster = true): ?self
     {
@@ -290,7 +287,7 @@ abstract class Connection implements ConnectionInterface
      * {@see queryCache}
      * {@see cache()}
      */
-    public function noCache(callable $callable)
+    public function noCache(callable $callable): mixed
     {
         $queryCache = $this->queryCache;
         $queryCache->setInfo(false);
@@ -337,7 +334,7 @@ abstract class Connection implements ConnectionInterface
             ?? ($this->quotedTableNames[$name] = $this->getSchema()->quoteTableName($name));
     }
 
-    public function quoteValue($value)
+    public function quoteValue($value): int|string
     {
         return $this->getSchema()->quoteValue($value);
     }
@@ -380,20 +377,6 @@ abstract class Connection implements ConnectionInterface
     public function setMaster(string $key, ConnectionInterface $master): void
     {
         $this->masters[$key] = $master;
-    }
-
-    /**
-     * Can be used to set {@see QueryBuilder} configuration via Connection configuration array.
-     *
-     * @param iterable $config the {@see QueryBuilder} properties to be configured.
-     */
-    public function setQueryBuilder(iterable $config): void
-    {
-        $builder = $this->getQueryBuilder();
-
-        foreach ($config as $key => $value) {
-            $builder->{$key} = $value;
-        }
     }
 
     /**
@@ -449,7 +432,7 @@ abstract class Connection implements ConnectionInterface
      *
      * @return mixed result of callback function
      */
-    public function transaction(callable $callback, string $isolationLevel = null)
+    public function transaction(callable $callback, string $isolationLevel = null): mixed
     {
         $transaction = $this->beginTransaction($isolationLevel);
 
@@ -489,7 +472,7 @@ abstract class Connection implements ConnectionInterface
      *
      * @return mixed the return value of the callback
      */
-    public function useMaster(callable $callback)
+    public function useMaster(callable $callback): mixed
     {
         if ($this->enableSlaves) {
             $this->enableSlaves = false;
@@ -559,12 +542,10 @@ abstract class Connection implements ConnectionInterface
 
                 return $poolConnection;
             } catch (Exception $e) {
-                if ($this->logger !== null) {
-                    $this->logger->log(
-                        LogLevel::WARNING,
-                        "Connection ({$poolConnection->getDriver()->getDsn()}) failed: " . $e->getMessage() . ' ' . __METHOD__
-                    );
-                }
+                $this->logger?->log(
+                    LogLevel::WARNING,
+                    "Connection ({$poolConnection->getDriver()->getDsn()}) failed: " . $e->getMessage() . ' ' . __METHOD__
+                );
 
                 if ($this->getSchema()->getSchemaCache()->isEnabled()) {
                     /** mark this server as dead and only retry it after the specified interval */
