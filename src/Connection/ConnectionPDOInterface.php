@@ -18,5 +18,5 @@ interface ConnectionPDOInterface extends ConnectionInterface
      *
      * @return string name of the DB driver
      */
-    public function getDriverName(): string
+    public function getDriverName(): string;
 }
