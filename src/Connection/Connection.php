@@ -154,30 +154,6 @@ abstract class Connection implements ConnectionInterface
         return $result;
     }
 
-    public function close(): void
-    {
-        if (!empty($this->master)) {
-            $this->getDriver()->PDO(null);
-            $this->master->close();
-            $this->master = null;
-        }
-
-        if ($this->getDriver()->getPDO() !== null) {
-            $this->logger?->log(
-                LogLevel::DEBUG,
-                'Closing DB connection: ' . $this->getDriver()->getDsn() . ' ' . __METHOD__,
-            );
-
-            $this->getDriver()->PDO(null);
-            $this->transaction = null;
-        }
-
-        if (!empty($this->slave)) {
-            $this->slave->close();
-            $this->slave = null;
-        }
-    }
-
     public function getEmulatePrepare(): ?bool
     {
         return $this->emulatePrepare;
