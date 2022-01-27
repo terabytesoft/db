@@ -6,7 +6,7 @@ namespace Yiisoft\Db\Connection;
 
 use PDO;
 use Yiisoft\Db\Command\Command;
-use yiisoft\Db\Driver\PDOInterface;
+use Yiisoft\Db\Driver\PDOInterface;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Schema\Schema;
