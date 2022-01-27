@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Connection;
 
-use PDO;
 use Psr\Log\LogLevel;
 use Throwable;
 use Yiisoft\Cache\Dependency\Dependency;
@@ -25,158 +24,24 @@ use Yiisoft\Db\Transaction\Transaction;
 use function array_keys;
 use function str_replace;
 
-/**
- * Connection represents a connection to a database via [PDO](http://php.net/manual/en/book.pdo.php).
- *
- * Connection works together with {@see Command}, {@see DataReader} and {@see Transaction} to provide data access to
- * various DBMS in a common set of APIs. They are a thin wrapper of the
- * [PDO PHP extension](http://php.net/manual/en/book.pdo.php).
- *
- * Connection supports database replication and read-write splitting. In particular, a Connection component can be
- * configured with multiple {@see setMaster()} and {@see setSlave()}. It will do load balancing and fail over by
- * choosing appropriate servers. It will also automatically direct read operations to the slaves and write operations
- * to the masters.
- *
- * To establish a DB connection, set {@see dsn}, {@see setUsername()} and {@see setPassword}, and then call
- * {@see open()} to connect to the database server. The current state of the connection can be checked using
- * {@see $isActive}.
- *
- * The following example shows how to create a Connection instance and establish the DB connection:
- *
- * ```php
- * $connection = new \Yiisoft\Db\Mysql\Connection($dsn, $queryCache);
- * $connection->open();
- * ```
- *
- * After the DB connection is established, one can execute SQL statements like the following:
- *
- * ```php
- * $command = $connection->createCommand('SELECT * FROM post');
- * $posts = $command->queryAll();
- * $command = $connection->createCommand('UPDATE post SET status=1');
- * $command->execute();
- * ```
- *
- * One can also do prepared SQL execution and bind parameters to the prepared SQL.
- * When the parameters are coming from user input, you should use this approach to prevent SQL injection attacks. The
- * following is an example:
- *
- * ```php
- * $command = $connection->createCommand('SELECT * FROM post WHERE id=:id');
- * $command->bindValue(':id', $_GET['id']);
- * $post = $command->query();
- * ```
- *
- * For more information about how to perform various DB queries, please refer to {@see Command}.
- *
- * If the underlying DBMS supports transactions, you can perform transactional SQL queries like the following:
- *
- * ```php
- * $transaction = $connection->beginTransaction();
- * try {
- *     $connection->createCommand($sql1)->execute();
- *     $connection->createCommand($sql2)->execute();
- *     // ... executing other SQL statements ...
- *     $transaction->commit();
- * } catch (Exceptions $e) {
- *     $transaction->rollBack();
- * }
- * ```
- *
- * You also can use shortcut for the above like the following:
- *
- * ```php
- * $connection->transaction(function () {
- *     $order = new Order($customer);
- *     $order->save();
- *     $order->addItems($items);
- * });
- * ```
- *
- * If needed you can pass transaction isolation level as a second parameter:
- *
- * ```php
- * $connection->transaction(function (ConnectionInterface $db) {
- *     //return $db->...
- * }, Transaction::READ_UNCOMMITTED);
- * ```
- *
- * Connection is often used as an application component and configured in the container-di configuration like the
- * following:
- *
- * ```php
- * Connection::class => static function (ContainerInterface $container) {
- *     $connection = new Connection(
- *         $container->get(CacheInterface::class),
- *         $container->get(LoggerInterface::class),
- *         $container->get(Profiler::class),
- *         'mysql:host=127.0.0.1;dbname=demo;charset=utf8'
- *     );
- *
- *     $connection->setUsername(root);
- *     $connection->setPassword('');
- *
- *     return $connection;
- * },
- * ```
- *
- * The {@see dsn} property can be defined via configuration {@see \Yiisoft\Db\Connection\Dsn}:
- *
- * ```php
- * Connection::class => static function (ContainerInterface $container) {
- *     $dsn = new Dsn('mysql', '127.0.0.1', 'yiitest', '3306');
- *
- *     $connection = new Connection(
- *         $container->get(CacheInterface::class),
- *         $container->get(LoggerInterface::class),
- *         $container->get(Profiler::class),
- *         $dsn->getDsn()
- *     );
- *
- *     $connection->setUsername(root);
- *     $connection->setPassword('');
- *
- *     return $connection;
- * },
- * ```
- *
- * @property string $driverName Name of the DB driver.
- * @property bool $isActive Whether the DB connection is established. This property is read-only.
- * @property string $lastInsertID The row ID of the last row inserted, or the last value retrieved from the sequence
- * object. This property is read-only.
- * @property Connection $master The currently active master connection. `null` is returned if there is no master
- * available. This property is read-only.
- * @property PDO $masterPdo The PDO instance for the currently active master connection. This property is read-only.
- * @property QueryBuilder $queryBuilder The query builder for the current DB connection. Note that the type of this
- * property differs in getter and setter. See {@see getQueryBuilder()} and {@see setQueryBuilder()} for details.
- * @property Schema $schema The schema information for the database opened by this connection. This property is
- * read-only.
- * @property string $serverVersion Server version as a string. This property is read-only.
- * @property Connection $slave The currently active slave connection. `null` is returned if there is no slave
- * available and `$fallbackToMaster` is false. This property is read-only.
- * @property PDO $slavePdo The PDO instance for the currently active slave connection. `null` is returned if no slave
- * connection is available and `$fallbackToMaster` is false. This property is read-only.
- * @property Transaction|null $transaction The currently active transaction. Null if no active transaction. This
- * property is read-only.
- */
 abstract class Connection implements ConnectionInterface
 {
     use LoggerAwareTrait;
     use ProfilerAwareTrait;
 
+    protected array $masters = [];
+    protected array $slaves = [];
     protected ?ConnectionInterface $master = null;
     protected ?ConnectionInterface $slave = null;
     protected ?Transaction $transaction = null;
     private ?bool $emulatePrepare = null;
-    private string $tablePrefix = '';
     private bool $enableSavepoint = true;
-    private int $serverRetryInterval = 600;
     private bool $enableSlaves = true;
-    private array $slaves = [];
-    protected array $masters = [];
-    private bool $shuffleMasters = true;
     private array $quotedTableNames = [];
     private array $quotedColumnNames = [];
+    private int $serverRetryInterval = 600;
+    private bool $shuffleMasters = true;
+    private string $tablePrefix = '';
     private QueryCache $queryCache;
 
     /**
@@ -287,6 +152,30 @@ abstract class Connection implements ConnectionInterface
         $result = $callable($this);
         $this->queryCache->removeLastInfo();
         return $result;
+    }
+
+    public function close(): void
+    {
+        if (!empty($this->master)) {
+            $this->getDriver()->PDO(null);
+            $this->master->close();
+            $this->master = null;
+        }
+
+        if ($this->getDriver()->getPDO() !== null) {
+            $this->logger?->log(
+                LogLevel::DEBUG,
+                'Closing DB connection: ' . $this->getDriver()->getDsn() . ' ' . __METHOD__,
+            );
+
+            $this->getDriver()->PDO(null);
+            $this->transaction = null;
+        }
+
+        if (!empty($this->slave)) {
+            $this->slave->close();
+            $this->slave = null;
+        }
     }
 
     public function getEmulatePrepare(): ?bool
