@@ -164,8 +164,8 @@ abstract class Connection implements ConnectionInterface
     use LoggerAwareTrait;
     use ProfilerAwareTrait;
 
-    protected ?Connection $master = null;
-    protected ?Connection $slave = null;
+    protected ?ConnectionInterface $master = null;
+    protected ?ConnectionInterface $slave = null;
     protected ?Transaction $transaction = null;
     private ?bool $emulatePrepare = null;
     private string $tablePrefix = '';

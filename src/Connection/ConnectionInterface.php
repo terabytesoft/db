@@ -6,7 +6,7 @@ namespace Yiisoft\Db\Connection;
 
 use PDO;
 use Yiisoft\Db\Command\Command;
-use yiisoft\Db\Driver\DriverInterface;
+use yiisoft\Db\Driver\PDOInterface;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Schema\Schema;
@@ -33,11 +33,6 @@ interface ConnectionInterface
      * It does nothing if the connection is already closed.
      */
     public function close(): void;
-
-    /**
-     * Returns the currently active driver connection.
-     */
-    public function getDriver(): DriverInterface;
 
     /**
      * Returns the schema information for the database opened by this connection.
