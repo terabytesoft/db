@@ -6,12 +6,6 @@ namespace Yiisoft\Db\Driver;
 
 interface DriverInterface
 {
-    public const DRIVER_MSSQL = 'mssql';
-    public const DRIVER_MYSQL = 'mysql';
-    public const DRIVER_ORACLE = 'oci';
-    public const DRIVER_PGSQL = 'pgsql';
-    public const DRIVER_SQLITE = 'sqlite';
-
     /**
      * Creates the connection instance.
      *
