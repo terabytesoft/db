@@ -193,6 +193,25 @@ abstract class Connection implements ConnectionInterface
         $this->queryCache = $queryCache;
     }
 
+    /**
+     * Close the connection before serializing.
+     *
+     * @return array
+     */
+    public function __sleep(): array
+    {
+        $fields = (array) $this;
+
+        unset(
+            $fields["\000" . __CLASS__ . "\000" . 'master'],
+            $fields["\000" . __CLASS__ . "\000" . 'slave'],
+            $fields["\000" . __CLASS__ . "\000" . 'transaction'],
+            $fields["\000" . __CLASS__ . "\000" . 'schema']
+        );
+
+        return array_keys($fields);
+    }
+
     public function areSlavesEnabled(): bool
     {
         return $this->enableSlaves;
