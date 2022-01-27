@@ -185,13 +185,13 @@ trait TestTrait
         return $result;
     }
 
-    protected function prepareDatabase(string $dsn = null, $fixture = null): void
+    protected function prepareDatabase($fixture = null): void
     {
         $fixture = $fixture ?? self::DB_FIXTURES_PATH;
 
-        if ($dsn !== null) {
-            $this->connection = $this->createConnection($dsn);
-        }
+        $pdoClass = self::DB_DRIVER_CLASS;
+        $PDODriver = new $pdoClass(self::DB_DSN, self::DB_USERNAME, self::DB_PASSWORD);
+        $this->connection = $this->createConnection($PDODriver);
 
         $this->connection->open();
 
