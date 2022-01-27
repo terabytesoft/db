@@ -583,7 +583,7 @@ class QueryBuilder
     /**
      * @param string $table
      * @param array|Query $insertColumns
-     * @param array|bool $updateColumns
+     * @param array|bool|Query $updateColumns
      * @param Constraint[] $constraints this parameter recieves a matched constraint list.
      * The constraints will be unique by their column names.
      *
