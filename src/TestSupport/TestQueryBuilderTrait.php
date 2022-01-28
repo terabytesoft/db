@@ -1016,13 +1016,14 @@ trait TestQueryBuilderTrait
 
     public function testGetColumnType(): void
     {
-        $qb = $this->getQueryBuilder();
+        $db = $this->getConnection();
+        $qb = $this->getQueryBuilder($db);
 
         foreach ($this->columnTypes() as $item) {
             [$column, $builder, $expected] = $item;
 
-            if (isset($item[3][$this->getConnection()->getDriverName()])) {
-                $expectedColumnSchemaBuilder = $item[3][$this->getConnection()->getDriverName()];
+            if (isset($item[3][$db->getDriverName()])) {
+                $expectedColumnSchemaBuilder = $item[3][$db->getDriverName()];
             } elseif (isset($item[3]) && !is_array($item[3])) {
                 $expectedColumnSchemaBuilder = $item[3];
             } else {
@@ -1037,10 +1038,11 @@ trait TestQueryBuilderTrait
 
     public function testCreateTableColumnTypes(): void
     {
-        $qb = $this->getQueryBuilder();
+        $db = $this->getConnection();
+        $qb = $this->getQueryBuilder($db);
 
         if ($qb->getDb()->getTableSchema('column_type_table', true) !== null) {
-            $this->getConnection(false)->createCommand($qb->dropTable('column_type_table'))->execute();
+            $db->createCommand($qb->dropTable('column_type_table'))->execute();
         }
 
         $columns = [];
@@ -1060,8 +1062,7 @@ trait TestQueryBuilderTrait
             }
         }
 
-        $this->getConnection(false)->createCommand($qb->createTable('column_type_table', $columns))->execute();
-
+        $db->createCommand($qb->createTable('column_type_table', $columns))->execute();
         $this->assertNotEmpty($qb->getDb()->getTableSchema('column_type_table', true));
     }
 
@@ -1090,7 +1091,7 @@ trait TestQueryBuilderTrait
             ->where(['exists', $subQuery])
             ->andWhere('t.some_column = :some_value', [':some_value' => 'asd']);
 
-        [$actualQuerySql, $queryParams] = $this->getQueryBuilder()->build($query);
+        [$actualQuerySql, $queryParams] = $this->getQueryBuilder($db)->build($query);
 
         $this->assertEquals($expectedQuerySql, $actualQuerySql);
         $this->assertEquals($expectedQueryParams, $queryParams);
@@ -1122,7 +1123,7 @@ trait TestQueryBuilderTrait
             ->where(['exists', $subQuery])
             ->andWhere(['t.some_column' => 'asd']);
 
-        [$actualQuerySql, $queryParams] = $this->getQueryBuilder()->build($query);
+        [$actualQuerySql, $queryParams] = $this->getQueryBuilder($db)->build($query);
 
         $this->assertEquals($expectedQuerySql, $actualQuerySql);
         $this->assertEquals($expectedQueryParams, $queryParams);
@@ -1161,7 +1162,7 @@ trait TestQueryBuilderTrait
               ->union($secondQuery)
               ->union($thirdQuery, true);
 
-        [$actualQuerySql, $queryParams] = $this->getQueryBuilder()->build($query);
+        [$actualQuerySql, $queryParams] = $this->getQueryBuilder($db)->build($query);
 
         $this->assertEquals($expectedQuerySql, $actualQuerySql);
         $this->assertEquals([], $queryParams);
@@ -1198,7 +1199,7 @@ trait TestQueryBuilderTrait
             ->withQuery($with2Query->union($with3Query), 'a2')
             ->from('a2');
 
-        [$actualQuerySql, $queryParams] = $this->getQueryBuilder()->build($query);
+        [$actualQuerySql, $queryParams] = $this->getQueryBuilder($db)->build($query);
 
         $this->assertEquals($expectedQuerySql, $actualQuerySql);
         $this->assertEquals([], $queryParams);
@@ -1221,7 +1222,7 @@ trait TestQueryBuilderTrait
             ->withQuery($with1Query, 'a1', true)
             ->from('a1');
 
-        [$actualQuerySql, $queryParams] = $this->getQueryBuilder()->build($query);
+        [$actualQuerySql, $queryParams] = $this->getQueryBuilder($db)->build($query);
 
         $this->assertEquals($expectedQuerySql, $actualQuerySql);
         $this->assertEquals([], $queryParams);
@@ -1241,7 +1242,7 @@ trait TestQueryBuilderTrait
             ->from('accounts')
             ->addSelect(['operations_count' => $subquery]);
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes(
             'SELECT *, (SELECT COUNT(*) FROM [[operations]] WHERE account_id = accounts.id) AS [[operations_count]]'
@@ -1272,7 +1273,7 @@ trait TestQueryBuilderTrait
             ])
             ->from('tablename');
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes(
             'SELECT [[t]].[[id]] AS [[ID]], [[gsm]].[[username]] AS [[GSM]], [[part]].[[Part]], [[t]].[[Part_Cost]]'
@@ -1292,7 +1293,7 @@ trait TestQueryBuilderTrait
             ->select(new Expression('1 AS ab'))
             ->from('tablename');
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes('SELECT 1 AS ab FROM [[tablename]]');
 
@@ -1305,7 +1306,7 @@ trait TestQueryBuilderTrait
             ->addSelect(['ef' => new Expression('3')])
             ->from('tablename');
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes('SELECT 1 AS ab, 2 AS cd, 3 AS [[ef]] FROM [[tablename]]');
 
@@ -1316,7 +1317,7 @@ trait TestQueryBuilderTrait
             ->select(new Expression('SUBSTR(name, 0, :len)', [':len' => 4]))
             ->from('tablename');
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes('SELECT SUBSTR(name, 0, :len) FROM [[tablename]]');
 
@@ -1333,7 +1334,7 @@ trait TestQueryBuilderTrait
 
         $query = (new Query($db))->from([new Expression('{{%user}} USE INDEX (primary)')]);
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes('SELECT * FROM {{%user}} USE INDEX (primary)');
 
@@ -1344,7 +1345,7 @@ trait TestQueryBuilderTrait
             ->from([new Expression('{{user}} {{t}} FORCE INDEX (primary) IGNORE INDEX FOR ORDER BY (i1)')])
             ->leftJoin(['p' => 'profile'], 'user.id = profile.user_id USE INDEX (i2)');
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes(
             'SELECT * FROM {{user}} {{t}} FORCE INDEX (primary) IGNORE INDEX FOR ORDER BY (i1)'
@@ -1365,7 +1366,7 @@ trait TestQueryBuilderTrait
         $query = (new Query($db))->from(['activeusers' => $subquery]);
 
         /* SELECT * FROM (SELECT * FROM [[user]] WHERE [[active]] = 1) [[activeusers]]; */
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes(
             'SELECT * FROM (SELECT * FROM [[user]] WHERE account_id = accounts.id) [[activeusers]]'
@@ -1395,7 +1396,7 @@ trait TestQueryBuilderTrait
         $query = (new Query($db))->from(['activeusers' => $subquery]);
 
         /* SELECT * FROM (SELECT * FROM [[user]] WHERE [[active]] = 1) [[activeusers]]; */
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes(
             'SELECT * FROM (SELECT * FROM user WHERE account_id = accounts.id) [[activeusers]]'
@@ -1415,7 +1416,7 @@ trait TestQueryBuilderTrait
             ->from('operations')
             ->orderBy('name ASC, date DESC');
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes('SELECT * FROM [[operations]] ORDER BY [[name]], [[date]] DESC');
 
@@ -1428,7 +1429,7 @@ trait TestQueryBuilderTrait
             ->from('operations')
             ->orderBy(['name' => SORT_ASC, 'date' => SORT_DESC]);
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes('SELECT * FROM [[operations]] ORDER BY [[name]], [[date]] DESC');
 
@@ -1442,7 +1443,7 @@ trait TestQueryBuilderTrait
             ->where('account_id = accounts.id')
             ->orderBy(new Expression('SUBSTR(name, 3, 4) DESC, x ASC'));
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes(
             'SELECT * FROM [[operations]] WHERE account_id = accounts.id ORDER BY SUBSTR(name, 3, 4) DESC, x ASC'
@@ -1457,7 +1458,7 @@ trait TestQueryBuilderTrait
             ->from('operations')
             ->orderBy(new Expression('SUBSTR(name, 3, :to) DESC, x ASC', [':to' => 4]));
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes('SELECT * FROM [[operations]] ORDER BY SUBSTR(name, 3, :to) DESC, x ASC');
 
@@ -1475,7 +1476,7 @@ trait TestQueryBuilderTrait
             ->from('operations')
             ->groupBy('name, date');
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes('SELECT * FROM [[operations]] GROUP BY [[name]], [[date]]');
 
@@ -1488,7 +1489,7 @@ trait TestQueryBuilderTrait
             ->from('operations')
             ->groupBy(['name', 'date']);
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes('SELECT * FROM [[operations]] GROUP BY [[name]], [[date]]');
 
@@ -1502,7 +1503,7 @@ trait TestQueryBuilderTrait
             ->where('account_id = accounts.id')
             ->groupBy(new Expression('SUBSTR(name, 0, 1), x'));
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes(
             'SELECT * FROM [[operations]] WHERE account_id = accounts.id GROUP BY SUBSTR(name, 0, 1), x'
@@ -1517,7 +1518,7 @@ trait TestQueryBuilderTrait
             ->from('operations')
             ->groupBy(new Expression('SUBSTR(name, 0, :to), x', [':to' => 4]));
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes('SELECT * FROM [[operations]] GROUP BY SUBSTR(name, 0, :to), x');
 
@@ -1530,7 +1531,8 @@ trait TestQueryBuilderTrait
      */
     public function testInitFixtures(): void
     {
-        $this->assertInstanceOf(QueryBuilder::class, $this->getQueryBuilder(true, true));
+        $db = $this->getConnection();
+        $this->assertInstanceOf(QueryBuilder::class, $this->getQueryBuilder($db));
     }
 
     /**
@@ -1548,7 +1550,7 @@ trait TestQueryBuilderTrait
             ->where([])
             ->andWhere(['in', 'id', ['1', '0']]);
 
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $this->assertSame($this->replaceQuotes('SELECT * FROM [[admin_user]] WHERE [[id]] IN (:qp0, :qp1)'), $sql);
         $this->assertSame([':qp0' => '1', ':qp1' => '0'], $params);
