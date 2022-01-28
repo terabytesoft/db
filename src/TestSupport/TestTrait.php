@@ -168,7 +168,7 @@ trait TestTrait
 
         foreach ($lines as $line) {
             if (trim($line) !== '') {
-                $db->getDriver()->getPDO()->exec($line);
+                $db->getPDO()->exec($line);
             }
         }
     }

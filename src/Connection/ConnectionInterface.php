@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Connection;
 
-use PDO;
 use Yiisoft\Db\Command\Command;
 use Yiisoft\Db\Driver\PDOInterface;
 use Yiisoft\Db\Exception\Exception;
@@ -47,21 +46,6 @@ interface ConnectionInterface
      * @return string server version as a string.
      */
     public function getServerVersion(): string;
-
-    /**
-     * Returns the PDO instance for the currently active slave connection.
-     *
-     * When {@see enableSlaves} is true, one of the slaves will be used for read queries, and its PDO instance will be
-     * returned by this method.
-     *
-     * @param bool $fallbackToMaster whether to return a master PDO in case none of the slave connections is available.
-     *
-     * @throws Exception
-     *
-     * @return PDO the PDO instance for the currently active slave connection. `null` is returned if no slave connection
-     * is available and `$fallbackToMaster` is false.
-     */
-    public function getSlavePdo(bool $fallbackToMaster = true): ?PDO;
 
     /**
      * Obtains the schema information for the named table.

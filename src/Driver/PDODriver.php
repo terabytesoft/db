@@ -6,7 +6,7 @@ namespace Yiisoft\Db\Driver;
 
 use PDO;
 
-final class PDODriver implements PDOInterface
+final class PDODriver
 {
     private ?string $charset = null;
     private ?PDO $pdo = null;
@@ -17,13 +17,6 @@ final class PDODriver implements PDOInterface
         private string $password = '',
         private array $attributes = []
     ) {
-    }
-
-    public function __sleep(): array
-    {
-        $fields = (array) $this;
-        unset($fields["\000" . __CLASS__ . "\000" . 'pdo']);
-        return array_keys($fields);
     }
 
     /**
@@ -38,13 +31,9 @@ final class PDODriver implements PDOInterface
         $this->attributes = $attributes;
     }
 
-    /**
-     * @return static
-     */
-    public function createConnectionInstance(): self
+    public function createConnection(): PDO
     {
-        $this->pdo = new PDO($this->dsn, $this->username, $this->password, $this->attributes);
-        return $this;
+        return new PDO($this->dsn, $this->username, $this->password, $this->attributes);
     }
 
     /**
@@ -112,14 +101,6 @@ final class PDODriver implements PDOInterface
     public function getUsername(): string
     {
         return $this->username;
-    }
-
-    /**
-     * Set the PDO connection.
-     */
-    public function PDO(?PDO $pdo): void
-    {
-        $this->pdo = $pdo;
     }
 
     /**

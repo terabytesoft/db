@@ -22,12 +22,12 @@ trait TestConnectionTrait
 
         $serialized = serialize($db);
 
-        $this->assertNotNull($db->getDriver()->getPDO());
+        $this->assertNotNull($db->getPDO());
 
         $unserialized = unserialize($serialized);
 
         $this->assertInstanceOf(ConnectionInterface::class, $unserialized);
-        $this->assertNull($unserialized->getDriver()->getPDO());
+        $this->assertNull($unserialized->getPDO());
         $this->assertEquals(123, $unserialized->createCommand('SELECT 123')->queryScalar());
     }
 
@@ -354,34 +354,34 @@ trait TestConnectionTrait
         $db = $this->getConnection();
 
         $this->assertNull($db->getTransaction());
-        $this->assertNull($db->getDriver()->getPDO());
+        $this->assertNull($db->getPDO());
 
         $db->open();
 
         $this->assertNull($db->getTransaction());
-        $this->assertNotNull($db->getDriver()->getPDO());
+        $this->assertNotNull($db->getPDO());
 
         $conn2 = clone $db;
 
         $this->assertNull($db->getTransaction());
-        $this->assertNotNull($db->getDriver()->getPDO());
+        $this->assertNotNull($db->getPDO());
 
         $this->assertNull($conn2->getTransaction());
-        $this->assertNull($conn2->getDriver()->getPDO());
+        $this->assertNull($conn2->getPDO());
 
         $db->beginTransaction();
 
         $this->assertNotNull($db->getTransaction());
-        $this->assertNotNull($db->getDriver()->getPDO());
+        $this->assertNotNull($db->getPDO());
 
         $this->assertNull($conn2->getTransaction());
-        $this->assertNull($conn2->getDriver()->getPDO());
+        $this->assertNull($conn2->getPDO());
 
         $conn3 = clone $db;
 
         $this->assertNotNull($db->getTransaction());
-        $this->assertNotNull($db->getDriver()->getPDO());
+        $this->assertNotNull($db->getPDO());
         $this->assertNull($conn3->getTransaction());
-        $this->assertNull($conn3->getDriver()->getPDO());
+        $this->assertNull($conn3->getPDO());
     }
 }

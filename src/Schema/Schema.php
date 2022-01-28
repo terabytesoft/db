@@ -342,7 +342,7 @@ abstract class Schema
     public function getLastInsertID(string $sequenceName = ''): string
     {
         if ($this->db->isActive()) {
-            return $this->db->getDriver()->getPDO()->lastInsertId(
+            return $this->db->getPDO()->lastInsertId(
                 $sequenceName === '' ? null : $this->quoteTableName($sequenceName)
             );
         }
