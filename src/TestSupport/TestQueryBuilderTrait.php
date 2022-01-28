@@ -1038,7 +1038,7 @@ trait TestQueryBuilderTrait
 
     public function testCreateTableColumnTypes(): void
     {
-        $db = $this->getConnection();
+        $db = $this->getConnection(true);
         $qb = $this->getQueryBuilder($db);
 
         if ($qb->getDb()->getTableSchema('column_type_table', true) !== null) {
@@ -1381,7 +1381,7 @@ trait TestQueryBuilderTrait
         $query = (new Query($db))->from(['activeusers' => $subquery])->where('abc = :abc', ['abc' => 'abc']);
 
         /* SELECT * FROM (SELECT * FROM [[user]] WHERE [[active]] = 1) [[activeusers]]; */
-        [$sql, $params] = $this->getQueryBuilder()->build($query);
+        [$sql, $params] = $this->getQueryBuilder($db)->build($query);
 
         $expected = $this->replaceQuotes(
             'SELECT * FROM (SELECT * FROM [[user]] WHERE account_id = :id) [[activeusers]] WHERE abc = :abc'
