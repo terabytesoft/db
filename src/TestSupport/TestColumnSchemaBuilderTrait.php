@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Yiisoft\Db\TestUtility;
+namespace Yiisoft\Db\TestSupport;
 
 use Yiisoft\Db\Expression\Expression;
 use Yiisoft\Db\Schema\ColumnSchemaBuilder;

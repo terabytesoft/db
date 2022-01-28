@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Yiisoft\Db\TestUtility;
+namespace Yiisoft\Db\TestSupport;
 
 use Psr\Log\LoggerInterface;
 use ReflectionClass;
@@ -13,7 +13,6 @@ use Yiisoft\Cache\CacheInterface;
 use Yiisoft\Db\Cache\QueryCache;
 use Yiisoft\Db\Cache\SchemaCache;
 use Yiisoft\Db\Connection\ConnectionInterface;
-use Yiisoft\Db\Driver\DriverInterface;
 use Yiisoft\Log\Logger;
 use Yiisoft\Profiler\Profiler;
 use Yiisoft\Profiler\ProfilerInterface;
@@ -61,16 +60,6 @@ trait TestTrait
         return $this->cache;
     }
 
-    protected function createConnection(DriverInterface $PDODriver): ConnectionInterface
-    {
-        $class = self::DB_CONNECTION_CLASS;
-        $db = new $class($PDODriver, $this->createQueryCache(), $this->createSchemaCache());
-        $db->setLogger($this->createLogger());
-        $db->setProfiler($this->createProfiler());
-
-        return $db;
-    }
-
     protected function createLogger(): Logger
     {
         if ($this->logger === null) {
@@ -103,31 +92,6 @@ trait TestTrait
         return $this->schemaCache;
     }
 
-    /**
-     * @param bool $reset whether to clean up the test database.
-     *
-     * @return ConnectionInterface
-     */
-    protected function getConnection($reset = false): ConnectionInterface
-    {
-        if ($reset === false && isset($this->connection)) {
-            return $this->connection;
-        }
-
-        if ($reset === false) {
-            $pdoClass = self::DB_DRIVER_CLASS;
-            $PDODriver = new $pdoClass(self::DB_DSN, self::DB_USERNAME, self::DB_PASSWORD);
-            return $this->createConnection($PDODriver);
-        }
-
-        try {
-            $this->prepareDatabase();
-        } catch (Exception $e) {
-            $this->markTestSkipped('Something wrong when preparing database: ' . $e->getMessage());
-        }
-
-        return $this->connection;
-    }
 
     /**
      * Gets an inaccessible object property.
@@ -185,17 +149,11 @@ trait TestTrait
         return $result;
     }
 
-    protected function prepareDatabase(string $fixture = null, string $dsn = null): void
+    protected function prepareDatabase(ConnectionInterface $db, string $fixture): void
     {
-        $fixture = $fixture ?? self::DB_FIXTURES_PATH;
+        $db->open();
 
-        $pdoClass = self::DB_DRIVER_CLASS;
-        $PDODriver = new $pdoClass($dsn ?? self::DB_DSN, self::DB_USERNAME, self::DB_PASSWORD);
-        $this->connection = $this->createConnection($PDODriver);
-
-        $this->connection->open();
-
-        if (self::DB_DRIVERNAME === 'oci') {
+        if ($this->drivername === 'oci') {
             [$drops, $creates] = explode('/* STATEMENTS */', file_get_contents($fixture), 2);
             [$statements, $triggers, $data] = explode('/* TRIGGERS */', $creates, 3);
             $lines = array_merge(
@@ -210,7 +168,7 @@ trait TestTrait
 
         foreach ($lines as $line) {
             if (trim($line) !== '') {
-                $this->connection->getDriver()->getPDO()->exec($line);
+                $db->getDriver()->getPDO()->exec($line);
             }
         }
     }
@@ -224,7 +182,7 @@ trait TestTrait
      */
     protected function replaceQuotes($sql)
     {
-        switch (self::DB_DRIVERNAME) {
+        switch ($this->drivername) {
             case 'mysql':
             case 'sqlite':
                 return str_replace(['[[', ']]'], '`', $sql);
