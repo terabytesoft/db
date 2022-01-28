@@ -1038,7 +1038,7 @@ trait TestQueryBuilderTrait
 
     public function testCreateTableColumnTypes(): void
     {
-        $db = $this->getConnection(true);
+        $db = $this->getConnection();
         $qb = $this->getQueryBuilder($db);
 
         if ($qb->getDb()->getTableSchema('column_type_table', true) !== null) {
@@ -1063,6 +1063,8 @@ trait TestQueryBuilderTrait
         }
 
         $db->createCommand($qb->createTable('column_type_table', $columns))->execute();
+        var_dump($qb->getDb()->getTableSchema('column_type_table', true));
+        die;
         $this->assertNotEmpty($qb->getDb()->getTableSchema('column_type_table', true));
     }
 
