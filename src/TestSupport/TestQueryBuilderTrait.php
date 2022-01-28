@@ -1063,8 +1063,6 @@ trait TestQueryBuilderTrait
         }
 
         $db->createCommand($qb->createTable('column_type_table', $columns))->execute();
-        var_dump($qb->getDb()->getTableSchema('column_type_table', true));
-        die;
         $this->assertNotEmpty($qb->getDb()->getTableSchema('column_type_table', true));
     }
 

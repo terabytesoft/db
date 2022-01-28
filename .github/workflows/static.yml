@@ -50,6 +50,8 @@ jobs:
           extensions: ${{ env.extensions }}
           tools: composer:v2, cs2pr
           coverage: pcov
+        env:
+          update: true
 
       - name: Determine composer cache directory
         run: echo "COMPOSER_CACHE_DIR=$(composer config cache-dir)" >> $GITHUB_ENV
