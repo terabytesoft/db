@@ -15,20 +15,6 @@ interface ConnectionPDOInterface extends ConnectionInterface
     public function getDriver(): PDODriver;
 
     /**
-     * Returns the name of the DB driver.
-     *
-     * @return string name of the DB driver
-     */
-    public function getDriverName(): string;
-
-    /**
-     * Returns a value indicating whether the DB connection is established.
-     *
-     * @return bool whether the DB connection is established
-     */
-    public function isActive(): bool;
-
-    /**
      * Returns the PDO instance for the currently active master connection.
      *
      * This method will open the master DB connection and then return {@see pdo}.

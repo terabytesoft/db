@@ -34,6 +34,13 @@ interface ConnectionInterface
     public function close(): void;
 
     /**
+     * Returns the name of the DB driver.
+     *
+     * @return string name of the DB driver
+     */
+    public function getDriverName(): string;
+
+    /**
      * Returns the schema information for the database opened by this connection.
      *
      * @return Schema the schema information for the database opened by this connection.
@@ -56,6 +63,13 @@ interface ConnectionInterface
      * @return TableSchema|null
      */
     public function getTableSchema(string $name, $refresh = false): ?TableSchema;
+
+    /**
+     * Returns a value indicating whether the DB connection is established.
+     *
+     * @return bool whether the DB connection is established
+     */
+    public function isActive(): bool;
 
     /**
      * Establishes a DB connection.
