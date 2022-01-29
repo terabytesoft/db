@@ -485,7 +485,7 @@ class QueryBuilder
      *
      * @param string $table the table that new rows will be inserted into.
      * @param array $columns the column names.
-     * @param array|Generator $rows the rows to be batch inserted into the table.
+     * @param iterable|Generator $rows the rows to be batch inserted into the table.
      * @param array $params the binding parameters. This parameter exists.
      *
      * @throws Exception|InvalidArgumentException

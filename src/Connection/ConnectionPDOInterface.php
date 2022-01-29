@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Connection;
 
+use Exception;
 use PDO;
 use Yiisoft\Db\Driver\PDODriver;
+use Yiisoft\Db\Exception\InvalidConfigException;
 
 interface ConnectionPDOInterface extends ConnectionInterface
 {

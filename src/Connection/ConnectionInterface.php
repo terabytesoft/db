@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Connection;
 
+use Throwable;
 use Yiisoft\Db\Command\Command;
 use Yiisoft\Db\Driver\PDOInterface;
 use Yiisoft\Db\Exception\Exception;

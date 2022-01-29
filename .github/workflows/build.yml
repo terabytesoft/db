@@ -27,7 +27,7 @@ jobs:
 
     env:
       COMPOSER_ROOT_VERSION: "dev-master"
-      extensions: dom, json, pdo, pdo_mysql, pdo_oci, pdo_pgsql, pdo_sqlite, pdo_sqlsrv-5.9.0
+      extensions: dom, json, pdo, pdo_mysql, pdo_oci, pdo_pgsql, pdo_sqlite, pdo_sqlsrv-5.10.0-beta1
 
     runs-on: ${{ matrix.os }}
 
@@ -72,15 +72,6 @@ jobs:
           ports:
               - 1433:1433
           options: --name=mssql --health-cmd="/opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P 'YourStrong!Passw0rd' -Q 'SELECT 1'" --health-interval=10s --health-timeout=5s --health-retries=3
-      redis:
-        image: redis:6
-        ports:
-          - 6379:6379
-        options:
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
       - name: Checkout
