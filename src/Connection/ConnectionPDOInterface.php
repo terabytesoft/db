@@ -37,7 +37,7 @@ interface ConnectionPDOInterface extends ConnectionInterface
      *
      * @return PDO|null the PDO instance for the currently active master connection.
      */
-    public function getMasterPdo(): PDO|null;
+    public function getMasterPDO(): PDO|null;
 
     /**
      * Returns the PDO instance for the currently active slave connection.
@@ -52,5 +52,5 @@ interface ConnectionPDOInterface extends ConnectionInterface
      * @return PDO the PDO instance for the currently active slave connection. `null` is returned if no slave connection
      * is available and `$fallbackToMaster` is false.
      */
-    public function getSlavePdo(bool $fallbackToMaster = true): ?PDO;
+    public function getSlavePDO(bool $fallbackToMaster = true): ?PDO;
 }

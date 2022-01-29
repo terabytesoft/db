@@ -942,11 +942,6 @@ abstract class Schema
         );
     }
 
-    public function getDb(): ConnectionInterface
-    {
-        return $this->db;
-    }
-
     public function getDefaultSchema(): ?string
     {
         return $this->defaultSchema;

@@ -127,4 +127,25 @@ interface ConnectionInterface
      * @param bool $value
      */
     public function setEnableSlaves(bool $value): void;
+
+    /**
+     * Executes the provided callback by using the master connection.
+     *
+     * This method is provided so that you can temporarily force using the master connection to perform DB operations
+     * even if they are read queries. For example,
+     *
+     * ```php
+     * $result = $db->useMaster(function (ConnectionInterface $db) {
+     *     return $db->createCommand('SELECT * FROM user LIMIT 1')->queryOne();
+     * });
+     * ```
+     *
+     * @param callable $callback a PHP callable to be executed by this method. Its signature is
+     * `function (ConnectionInterface $db)`. Its return value will be returned by this method.
+     *
+     * @throws Throwable if there is any exception thrown from the callback
+     *
+     * @return mixed the return value of the callback
+     */
+    public function useMaster(callable $callback): mixed;
 }
