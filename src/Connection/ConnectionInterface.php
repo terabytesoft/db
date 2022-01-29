@@ -8,6 +8,7 @@ use Yiisoft\Db\Command\Command;
 use Yiisoft\Db\Driver\PDOInterface;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\InvalidConfigException;
+use Yiisoft\Db\Query\QueryBuilder;
 use Yiisoft\Db\Schema\Schema;
 use Yiisoft\Db\Schema\TableSchema;
 
@@ -39,6 +40,13 @@ interface ConnectionInterface
      * @return string name of the DB driver
      */
     public function getDriverName(): string;
+
+    /**
+     * Returns the query builder for the current DB connection.
+     *
+     * @return QueryBuilder the query builder for the current DB connection.
+     */
+    public function getQueryBuilder(): QueryBuilder;
 
     /**
      * Returns the schema information for the database opened by this connection.
