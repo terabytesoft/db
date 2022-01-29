@@ -13,9 +13,6 @@
     <ini name="error_reporting" value="-1"/>
   </php>
   <testsuites>
-    <testsuite name="ActiveRecord">
-      <directory>./vendor/terabytesoft/active-record/tests</directory>
-    </testsuite>
     <testsuite name="Mssql">
       <directory>./vendor/terabytesoft/db-mssql/tests</directory>
     </testsuite>
