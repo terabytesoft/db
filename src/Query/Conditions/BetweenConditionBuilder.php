@@ -21,23 +21,13 @@ class BetweenConditionBuilder implements ExpressionBuilderInterface
 {
     use ExpressionBuilderTrait;
 
-    /**
-     * Method builds the raw SQL from the $expression that will not be additionally escaped or quoted.
-     *
-     * @param BetweenCondition|ExpressionInterface $expression the expression to be built.
-     * @param array $params the binding parameters.
-     *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
-     *
-     * @return string the raw SQL that will not be additionally escaped or quoted.
-     */
     public function build(ExpressionInterface $expression, array &$params = []): string
     {
         $operator = $expression->getOperator();
         $column = $expression->getColumn();
 
         if (strpos($column, '(') === false) {
-            $column = $this->queryBuilder->getDb()->quoteColumnName($column);
+            $column = $this->queryBuilder->getQuoter()->quoteColumnName($column);
         }
 
         $phName1 = $this->createPlaceholder($expression->getIntervalStart(), $params);

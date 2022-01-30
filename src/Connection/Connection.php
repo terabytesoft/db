@@ -35,8 +35,6 @@ abstract class Connection implements ConnectionInterface
     private ?bool $emulatePrepare = null;
     private bool $enableSavepoint = true;
     private bool $enableSlaves = true;
-    private array $quotedTableNames = [];
-    private array $quotedColumnNames = [];
     private int $serverRetryInterval = 600;
     private bool $shuffleMasters = true;
     private string $tablePrefix = '';
@@ -173,16 +171,6 @@ abstract class Connection implements ConnectionInterface
     }
 
     /**
-     * Returns the query builder for the current DB connection.
-     *
-     * @return QueryBuilder the query builder for the current DB connection.
-     */
-    public function getQueryBuilder(): QueryBuilder
-    {
-        return $this->getSchema()->getQueryBuilder();
-    }
-
-    /**
      * @throws Exception
      */
     public function getServerVersion(): string
@@ -220,7 +208,7 @@ abstract class Connection implements ConnectionInterface
         return $this->tablePrefix;
     }
 
-    public function getTableSchema(string $name, $refresh = false): ?TableSchema
+    public function getTableSchema(string $name, bool $refresh = false): ?TableSchema
     {
         return $this->getSchema()->getTableSchema($name, $refresh);
     }
@@ -275,49 +263,6 @@ abstract class Connection implements ConnectionInterface
         $result = $callable($this);
         $queryCache->removeLastInfo();
         return $result;
-    }
-
-    public function quoteColumnName(string $name): string
-    {
-        return $this->quotedColumnNames[$name]
-            ?? ($this->quotedColumnNames[$name] = $this->getSchema()->quoteColumnName($name));
-    }
-
-    /**
-     * Processes a SQL statement by quoting table and column names that are enclosed within double brackets.
-     *
-     * Tokens enclosed within double curly brackets are treated as table names, while tokens enclosed within double
-     * square brackets are column names. They will be quoted accordingly. Also, the percentage character "%" at the
-     * beginning or ending of a table name will be replaced with {@see tablePrefix}.
-     *
-     * @param string $sql the SQL to be quoted
-     *
-     * @return string the quoted SQL
-     */
-    public function quoteSql(string $sql): string
-    {
-        return preg_replace_callback(
-            '/({{(%?[\w\-. ]+%?)}}|\\[\\[([\w\-. ]+)]])/',
-            function ($matches) {
-                if (isset($matches[3])) {
-                    return $this->quoteColumnName($matches[3]);
-                }
-
-                return str_replace('%', $this->tablePrefix, $this->quoteTableName($matches[2]));
-            },
-            $sql
-        );
-    }
-
-    public function quoteTableName(string $name): string
-    {
-        return $this->quotedTableNames[$name]
-            ?? ($this->quotedTableNames[$name] = $this->getSchema()->quoteTableName($name));
-    }
-
-    public function quoteValue($value): int|string
-    {
-        return $this->getSchema()->quoteValue($value);
     }
 
     /**

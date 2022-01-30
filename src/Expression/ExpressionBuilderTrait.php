@@ -12,10 +12,7 @@ use Yiisoft\Db\Query\QueryBuilder;
  */
 trait ExpressionBuilderTrait
 {
-    protected QueryBuilder $queryBuilder;
-
-    public function __construct(QueryBuilder $queryBuilder)
+    public function __construct(protected QueryBuilder $queryBuilder)
     {
-        $this->queryBuilder = $queryBuilder;
     }
 }

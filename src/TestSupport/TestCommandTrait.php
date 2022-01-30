@@ -1416,7 +1416,7 @@ trait TestCommandTrait
             $this->markTestSkipped('Sqlite does not support alterTable');
         }
 
-        if ($db->getSchema()->getTableSchema('testAlterTable') !== null) {
+        if ($db->getSchema()->getTableSchema('testAlterTable', true) !== null) {
             $db->createCommand()->dropTable('testAlterTable')->execute();
         }
 
@@ -1429,9 +1429,7 @@ trait TestCommandTrait
         )->execute();
 
         $db->createCommand()->insert('testAlterTable', ['bar' => 1])->execute();
-
         $db->createCommand()->alterColumn('testAlterTable', 'bar', Schema::TYPE_STRING)->execute();
-
         $db->createCommand()->insert('testAlterTable', ['bar' => 'hello'])->execute();
 
         $records = $db->createCommand('SELECT [[id]], [[bar]] FROM {{testAlterTable}}')->queryAll();

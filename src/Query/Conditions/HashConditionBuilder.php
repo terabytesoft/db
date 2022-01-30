@@ -25,16 +25,6 @@ class HashConditionBuilder implements ExpressionBuilderInterface
 {
     use ExpressionBuilderTrait;
 
-    /**
-     * Method builds the raw SQL from the $expression that will not be additionally escaped or quoted.
-     *
-     * @param ExpressionInterface|HashCondition $expression the expression to be built.
-     * @param array $params the binding parameters.
-     *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
-     *
-     * @return string the raw SQL that will not be additionally escaped or quoted.
-     */
     public function build(ExpressionInterface $expression, array &$params = []): string
     {
         $hash = $expression->getHash();
@@ -46,7 +36,7 @@ class HashConditionBuilder implements ExpressionBuilderInterface
                 $parts[] = $this->queryBuilder->buildCondition(new InCondition($column, 'IN', $value), $params);
             } else {
                 if (strpos($column, '(') === false) {
-                    $column = $this->queryBuilder->getDb()->quoteColumnName($column);
+                    $column = $this->queryBuilder->getQuoter()->quoteColumnName($column);
                 }
                 if ($value === null) {
                     $parts[] = "$column IS NULL";

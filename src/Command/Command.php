@@ -183,7 +183,7 @@ class Command
         if ($sql !== $this->sql) {
             $this->cancel();
             $this->reset();
-            $this->sql = $this->db->quoteSql($sql);
+            $this->sql = $this->db->getQuoter()->quoteSql($sql);
         }
 
         return $this;
@@ -236,7 +236,7 @@ class Command
             }
 
             if (is_string($value)) {
-                $params[$name] = $this->db->quoteValue($value);
+                $params[$name] = $this->db->getQuoter()->quoteValue($value);
             } elseif (is_bool($value)) {
                 $params[$name] = ($value ? 'TRUE' : 'FALSE');
             } elseif ($value === null) {
@@ -579,9 +579,9 @@ class Command
      */
     public function batchInsert(string $table, array $columns, iterable $rows): self
     {
-        $table = $this->db->quoteSql($table);
+        $table = $this->db->getQuoter()->quoteSql($table);
 
-        $columns = array_map(fn ($column) => $this->db->quoteSql($column), $columns);
+        $columns = array_map(fn ($column) => $this->db->getQuoter()->quoteSql($column), $columns);
 
         $params = [];
 

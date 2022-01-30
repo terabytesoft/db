@@ -33,16 +33,6 @@ class InConditionBuilder implements ExpressionBuilderInterface
 {
     use ExpressionBuilderTrait;
 
-    /**
-     * Method builds the raw SQL from the $expression that will not be additionally escaped or quoted.
-     *
-     * @param ExpressionInterface|InCondition $expression the expression to be built.
-     * @param array $params the binding parameters.
-     *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
-     *
-     * @return string the raw SQL that will not be additionally escaped or quoted.
-     */
     public function build(ExpressionInterface $expression, array &$params = []): string
     {
         $operator = strtoupper($expression->getOperator());
@@ -98,7 +88,7 @@ class InConditionBuilder implements ExpressionBuilderInterface
         }
 
         if (strpos($column, '(') === false) {
-            $column = $this->queryBuilder->getDb()->quoteColumnName($column);
+            $column = $this->queryBuilder->getQuoter()->quoteColumnName($column);
         }
 
         if (count($sqlValues) > 1) {
@@ -174,7 +164,7 @@ class InConditionBuilder implements ExpressionBuilderInterface
         if (is_array($columns)) {
             foreach ($columns as $i => $col) {
                 if (strpos($col, '(') === false) {
-                    $columns[$i] = $this->queryBuilder->getDb()->quoteColumnName($col);
+                    $columns[$i] = $this->queryBuilder->getQuoter()->quoteColumnName($col);
                 }
             }
 
@@ -182,7 +172,7 @@ class InConditionBuilder implements ExpressionBuilderInterface
         }
 
         if (strpos($columns, '(') === false) {
-            $columns = $this->queryBuilder->getDb()->quoteColumnName($columns);
+            $columns = $this->queryBuilder->getQuoter()->quoteColumnName($columns);
         }
 
         return "$columns $operator $sql";
@@ -221,7 +211,7 @@ class InConditionBuilder implements ExpressionBuilderInterface
         $sqlColumns = [];
         foreach ($columns as $i => $column) {
             $sqlColumns[] = strpos($column, '(') === false
-                ? $this->queryBuilder->getDb()->quoteColumnName($column) : $column;
+                ? $this->queryBuilder->getQuoter()->quoteColumnName($column) : $column;
         }
 
         return '(' . implode(', ', $sqlColumns) . ") $operator (" . implode(', ', $vss) . ')';
@@ -237,7 +227,7 @@ class InConditionBuilder implements ExpressionBuilderInterface
      */
     protected function getNullCondition(string $operator, string $column): string
     {
-        $column = $this->queryBuilder->getDb()->quoteColumnName($column);
+        $column = $this->queryBuilder->getQuoter()->quoteColumnName($column);
 
         if ($operator === 'IN') {
             return sprintf('%s IS NULL', $column);
