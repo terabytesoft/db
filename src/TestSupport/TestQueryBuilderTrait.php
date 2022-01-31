@@ -27,11 +27,6 @@ trait TestQueryBuilderTrait
 {
     use SchemaBuilderTrait;
 
-    public function getDb(): ConnectionInterface
-    {
-        return $this->getConnection();
-    }
-
     /**
      * This is not used as a dataprovider for testGetColumnType to speed up the test when used as dataprovider every
      * single line will cause a reconnect with the database which is not needed here.
@@ -1041,7 +1036,7 @@ trait TestQueryBuilderTrait
         $db = $this->getConnection();
         $qb = $this->getQueryBuilder($db);
 
-        if ($qb->getDb()->getTableSchema('column_type_table', true) !== null) {
+        if ($db->getTableSchema('column_type_table', true) !== null) {
             $db->createCommand($qb->dropTable('column_type_table'))->execute();
         }
 
@@ -1063,7 +1058,7 @@ trait TestQueryBuilderTrait
         }
 
         $db->createCommand($qb->createTable('column_type_table', $columns))->execute();
-        $this->assertNotEmpty($qb->getDb()->getTableSchema('column_type_table', true));
+        $this->assertNotEmpty($db->getTableSchema('column_type_table', true));
     }
 
     public function testBuildWhereExistsWithParameters(): void

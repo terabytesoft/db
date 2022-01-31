@@ -6,10 +6,10 @@ namespace Yiisoft\Db\Connection;
 
 use Throwable;
 use Yiisoft\Db\Command\Command;
-use Yiisoft\Db\Driver\PDOInterface;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Query\QueryBuilder;
+use Yiisoft\Db\Schema\QuoterInterface;
 use Yiisoft\Db\Schema\Schema;
 use Yiisoft\Db\Schema\TableSchema;
 
@@ -49,6 +49,8 @@ interface ConnectionInterface
      */
     public function getQueryBuilder(): QueryBuilder;
 
+    public function getQuoter(): QuoterInterface;
+
     /**
      * Returns the schema information for the database opened by this connection.
      *
@@ -71,7 +73,7 @@ interface ConnectionInterface
      *
      * @return TableSchema|null
      */
-    public function getTableSchema(string $name, $refresh = false): ?TableSchema;
+    public function getTableSchema(string $name, bool $refresh = false): ?TableSchema;
 
     /**
      * Returns a value indicating whether the DB connection is established.
@@ -88,60 +90,6 @@ interface ConnectionInterface
      * @throws Exception|InvalidConfigException if connection fails
      */
     public function open(): void;
-
-    /**
-     * Quotes a column name for use in a query.
-     *
-     * If the column name contains prefix, the prefix will also be properly quoted.
-     * If the column name is already quoted or contains special characters including '(', '[[' and '{{', then this
-     * method will do nothing.
-     *
-     * @param string $name column name
-     *
-     * @return string the properly quoted column name
-     */
-    public function quoteColumnName(string $name): string;
-
-    /**
-     * Processes a SQL statement by quoting table and column names that are enclosed within double brackets.
-     *
-     * Tokens enclosed within double curly brackets are treated as table names, while tokens enclosed within double
-     * square brackets are column names. They will be quoted accordingly. Also, the percentage character "%" at the
-     * beginning or ending of a table name will be replaced with {@see tablePrefix}.
-     *
-     * @param string $sql the SQL to be quoted
-     *
-     * @return string the quoted SQL
-     */
-    public function quoteSql(string $sql): string;
-
-    /**
-     * Quotes a table name for use in a query.
-     *
-     * If the table name contains schema prefix, the prefix will also be properly quoted.
-     * If the table name is already quoted or contains special characters including '(', '[[' and '{{', then this method
-     * will do nothing.
-     *
-     * @param string $name table name
-     *
-     * @return string the properly quoted table name
-     */
-    public function quoteTableName(string $name): string;
-
-    /**
-     * Quotes a string value for use in a query.
-     *
-     * Note that if the parameter is not a string, it will be returned without change.
-     *
-     * @param int|string $value string to be quoted
-     *
-     * @throws Exception
-     *
-     * @return int|string the properly quoted string
-     *
-     * {@see http://php.net/manual/en/pdo.quote.php}
-     */
-    public function quoteValue($value);
 
     /**
      * Whether to enable read/write splitting by using {@see setSlaves()} to read data. Note that if {@see setSlaves()}

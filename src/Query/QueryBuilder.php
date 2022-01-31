@@ -6,7 +6,6 @@ namespace Yiisoft\Db\Query;
 
 use Generator;
 use JsonException;
-use Yiisoft\Db\Connection\ConnectionInterface;
 use Yiisoft\Db\Constraint\Constraint;
 use Yiisoft\Db\Constraint\ConstraintFinderInterface;
 use Yiisoft\Db\Exception\Exception;
@@ -23,6 +22,7 @@ use Yiisoft\Db\Query\Conditions\ConditionInterface;
 use Yiisoft\Db\Query\Conditions\HashCondition;
 use Yiisoft\Db\Query\Conditions\SimpleCondition;
 use Yiisoft\Db\Schema\ColumnSchemaBuilder;
+use Yiisoft\Db\Schema\QuoterInterface;
 use Yiisoft\Db\Schema\Schema;
 use Yiisoft\Strings\NumericHelper;
 
@@ -73,10 +73,10 @@ use function trim;
  * ```php
  *     ['LIKE' => \Yiisoft\Db\Condition\LikeCondition::class]
  * ```
- * @property string[] $expressionBuilders Array of builders that should be merged with the pre-defined ones in
+ * @property string[] $expressionBuilders Array of builders that should be merged with the pre-defined one's in
  * {@see expressionBuilders} property. This property is write-only.
  */
-class QueryBuilder
+abstract class QueryBuilder
 {
     /**
      * The prefix for automatically generated query binding parameters.
@@ -128,14 +128,110 @@ class QueryBuilder
      */
     protected array $expressionBuilders = [];
     protected string $separator = ' ';
-    private ConnectionInterface $db;
 
-    public function __construct(ConnectionInterface $db)
+    public function __construct(private QuoterInterface $quoter, private Schema $schema)
     {
-        $this->db = $db;
         $this->expressionBuilders = $this->defaultExpressionBuilders();
         $this->conditionClasses = $this->defaultConditionClasses();
     }
+
+    /**
+     * Creates a SQL command for adding a default value constraint to an existing table.
+     *
+     * @param string $name the name of the default value constraint.
+     * The name will be properly quoted by the method.
+     * @param string $table the table that the default value constraint will be added to.
+     * The name will be properly quoted by the method.
+     * @param string $column the name of the column to that the constraint will be added on.
+     * The name will be properly quoted by the method.
+     * @param mixed $value default value.
+     *
+     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
+     *
+     * @return string the SQL statement for adding a default value constraint to an existing table.
+     */
+    abstract public function addDefaultValue(string $name, string $table, string $column, $value): string;
+
+    /**
+     * Builds a SQL statement for enabling or disabling integrity check.
+     *
+     * @param string $schema the schema of the tables. Defaults to empty string, meaning the current or default schema.
+     * @param string $table the table name. Defaults to empty string, meaning that no table will be changed.
+     * @param bool $check whether to turn on or off the integrity check.
+     *
+     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
+     *
+     * @return string the SQL statement for checking integrity.
+     */
+    abstract public function checkIntegrity(string $schema = '', string $table = '', bool $check = true): string;
+
+    /**
+     * Creates a SQL command for dropping a default value constraint.
+     *
+     * @param string $name the name of the default value constraint to be dropped.
+     * The name will be properly quoted by the method.
+     * @param string $table the table whose default value constraint is to be dropped.
+     * The name will be properly quoted by the method.
+     *
+     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
+     *
+     * @return string the SQL statement for dropping a default value constraint.
+     */
+    abstract public function dropDefaultValue(string $name, string $table): string;
+
+    /**
+     * Creates a SQL statement for resetting the sequence value of a table's primary key.
+     *
+     * The sequence will be reset such that the primary key of the next new row inserted will have the specified value
+     * or 1.
+     *
+     * @param string $tableName the name of the table whose primary key sequence will be reset.
+     * @param array|int|string|null $value the value for the primary key of the next new row inserted. If this is not
+     * set, the next new row's primary key will have a value 1.
+     *
+     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
+     *
+     * @return string the SQL statement for resetting sequence.
+     */
+    abstract public function resetSequence(string $tableName, array|int|string|null $value = null): string;
+
+    /**
+     * Creates an SQL statement to insert rows into a database table if they do not already exist (matching unique
+     * constraints), or update them if they do.
+     *
+     * For example,
+     *
+     * ```php
+     * $sql = $queryBuilder->upsert('pages', [
+     *     'name' => 'Front page',
+     *     'url' => 'http://example.com/', // url is unique
+     *     'visits' => 0,
+     * ], [
+     *     'visits' => new \Yiisoft\Db\Expression('visits + 1'),
+     * ], $params);
+     * ```
+     *
+     * The method will properly escape the table and column names.
+     *
+     * @param string $table the table that new rows will be inserted into/updated in.
+     * @param array|Query $insertColumns the column data (name => value) to be inserted into the table or instance
+     * of {@see Query} to perform `INSERT INTO ... SELECT` SQL statement.
+     * @param array|bool $updateColumns the column data (name => value) to be updated if they already exist.
+     * If `true` is passed, the column data will be updated to match the insert column data.
+     * If `false` is passed, no update will be performed if the column data already exists.
+     * @param array $params the binding parameters that will be generated by this method. They should be bound to the DB
+     * command later.
+     *
+     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
+     *
+     * @return string the resulting SQL.
+     */
+    abstract public function upsert(
+        string $table,
+        Query|array $insertColumns,
+        bool|array $updateColumns,
+        array &$params
+    ): string;
 
     /**
      * Contains array of default condition classes. Extend this method, if you want to change default condition classes
@@ -303,7 +399,6 @@ class QueryBuilder
     public function buildExpression(ExpressionInterface $expression, array &$params = []): string
     {
         $builder = $this->getExpressionBuilder($expression);
-
         return (string) $builder->build($expression, $params);
     }
 
@@ -320,7 +415,7 @@ class QueryBuilder
      *
      * @see expressionBuilders
      */
-    public function getExpressionBuilder(ExpressionInterface $expression)
+    public function getExpressionBuilder(ExpressionInterface $expression): string|ExpressionBuilderInterface|static
     {
         $className = get_class($expression);
 
@@ -353,7 +448,7 @@ class QueryBuilder
     /**
      * Creates an INSERT SQL statement.
      *
-     * For example,.
+     * For example,
      *
      * ```php
      * $sql = $queryBuilder->insert('user', [
@@ -370,15 +465,15 @@ class QueryBuilder
      * @param array $params the binding parameters that will be generated by this method. They should be bound to the
      * DB command later.
      *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|JsonException|NotSupportedException
+     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
      *
      * @return string the INSERT SQL.
      */
-    public function insert(string $table, $columns, array &$params = []): string
+    public function insert(string $table, Query|array $columns, array &$params = []): string
     {
         [$names, $placeholders, $values, $params] = $this->prepareInsertValues($table, $columns, $params);
 
-        return 'INSERT INTO ' . $this->db->quoteTableName($table)
+        return 'INSERT INTO ' . $this->quoter->quoteTableName($table)
             . (!empty($names) ? ' (' . implode(', ', $names) . ')' : '')
             . (!empty($placeholders) ? ' VALUES (' . implode(', ', $placeholders) . ')' : $values);
     }
@@ -396,20 +491,19 @@ class QueryBuilder
      *
      * @return array array of column names, placeholders, values and params.
      */
-    protected function prepareInsertValues(string $table, $columns, array $params = []): array
+    protected function prepareInsertValues(string $table, Query|array $columns, array $params = []): array
     {
-        $schema = $this->db->getSchema();
-        $tableSchema = $schema->getTableSchema($table);
+        $tableSchema = $this->schema->getTableSchema($table);
         $columnSchemas = $tableSchema !== null ? $tableSchema->getColumns() : [];
         $names = [];
         $placeholders = [];
         $values = ' DEFAULT VALUES';
 
         if ($columns instanceof Query) {
-            [$names, $values, $params] = $this->prepareInsertSelectSubQuery($columns, $schema, $params);
+            [$names, $values, $params] = $this->prepareInsertSelectSubQuery($columns, $params);
         } else {
             foreach ($columns as $name => $value) {
-                $names[] = $schema->quoteColumnName($name);
+                $names[] = $this->quoter->quoteColumnName($name);
                 $value = isset($columnSchemas[$name]) ? $columnSchemas[$name]->dbTypecast($value) : $value;
 
                 if ($value instanceof ExpressionInterface) {
@@ -430,7 +524,6 @@ class QueryBuilder
      * Prepare select-subquery and field names for INSERT INTO ... SELECT SQL statement.
      *
      * @param Query $columns Object, which represents select query.
-     * @param Schema $schema Schema object to quote column name.
      * @param array $params the parameters to be bound to the generated SQL statement. These parameters will be included
      * in the result with the additional parameters generated during the query building process.
      *
@@ -438,7 +531,7 @@ class QueryBuilder
      *
      * @return array array of column names, values and params.
      */
-    protected function prepareInsertSelectSubQuery(Query $columns, Schema $schema, array $params = []): array
+    protected function prepareInsertSelectSubQuery(Query $columns, array $params = []): array
     {
         if (
             !is_array($columns->getSelect())
@@ -455,11 +548,11 @@ class QueryBuilder
 
         foreach ($columns->getSelect() as $title => $field) {
             if (is_string($title)) {
-                $names[] = $schema->quoteColumnName($title);
+                $names[] = $this->quoter->quoteColumnName($title);
             } elseif (preg_match('/^(.*?)(?i:\s+as\s+|\s+)([\w\-_.]+)$/', $field, $matches)) {
-                $names[] = $schema->quoteColumnName($matches[2]);
+                $names[] = $this->quoter->quoteColumnName($matches[2]);
             } else {
-                $names[] = $schema->quoteColumnName($field);
+                $names[] = $this->quoter->quoteColumnName($field);
             }
         }
 
@@ -485,23 +578,20 @@ class QueryBuilder
      *
      * @param string $table the table that new rows will be inserted into.
      * @param array $columns the column names.
-     * @param iterable|Generator $rows the rows to be batch inserted into the table.
+     * @param iterable|Generator $rows the rows to be batched inserted into the table.
      * @param array $params the binding parameters. This parameter exists.
      *
      * @throws Exception|InvalidArgumentException
      *
      * @return string the batch INSERT SQL statement.
      */
-    public function batchInsert(string $table, array $columns, $rows, array &$params = []): string
+    public function batchInsert(string $table, array $columns, iterable|Generator $rows, array &$params = []): string
     {
         if (empty($rows)) {
             return '';
         }
 
-        $schema = $this->db->getSchema();
-
-
-        if (($tableSchema = $schema->getTableSchema($table)) !== null) {
+        if (($tableSchema = $this->schema->getTableSchema($table)) !== null) {
             $columnSchemas = $tableSchema->getColumns();
         } else {
             $columnSchemas = [];
@@ -516,7 +606,7 @@ class QueryBuilder
                     $value = $columnSchemas[$columns[$i]]->dbTypecast($value);
                 }
                 if (is_string($value)) {
-                    $value = $schema->quoteValue($value);
+                    $value = $this->quoter->quoteValue($value);
                 } elseif (is_float($value)) {
                     /* ensure type cast always has . as decimal separator in all locales */
                     $value = NumericHelper::normalize((string) $value);
@@ -537,71 +627,38 @@ class QueryBuilder
         }
 
         foreach ($columns as $i => $name) {
-            $columns[$i] = $schema->quoteColumnName($name);
+            $columns[$i] = $this->quoter->quoteColumnName($name);
         }
 
-        return 'INSERT INTO ' . $schema->quoteTableName($table)
+        return 'INSERT INTO ' . $this->quoter->quoteTableName($table)
             . ' (' . implode(', ', $columns) . ') VALUES ' . implode(', ', $values);
-    }
-
-    /**
-     * Creates an SQL statement to insert rows into a database table if they do not already exist (matching unique
-     * constraints), or update them if they do.
-     *
-     * For example,
-     *
-     * ```php
-     * $sql = $queryBuilder->upsert('pages', [
-     *     'name' => 'Front page',
-     *     'url' => 'http://example.com/', // url is unique
-     *     'visits' => 0,
-     * ], [
-     *     'visits' => new \Yiisoft\Db\Expression('visits + 1'),
-     * ], $params);
-     * ```
-     *
-     * The method will properly escape the table and column names.
-     *
-     * @param string $table the table that new rows will be inserted into/updated in.
-     * @param array|Query $insertColumns the column data (name => value) to be inserted into the table or instance
-     * of {@see Query} to perform `INSERT INTO ... SELECT` SQL statement.
-     * @param array|bool $updateColumns the column data (name => value) to be updated if they already exist.
-     * If `true` is passed, the column data will be updated to match the insert column data.
-     * If `false` is passed, no update will be performed if the column data already exists.
-     * @param array $params the binding parameters that will be generated by this method. They should be bound to the DB
-     * command later.
-     *
-     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
-     *
-     * @return string the resulting SQL.
-     */
-    public function upsert(string $table, $insertColumns, $updateColumns, array &$params): string
-    {
-        throw new NotSupportedException($this->db->getDriverName() . ' does not support upsert statements.');
     }
 
     /**
      * @param string $table
      * @param array|Query $insertColumns
-     * @param array|bool|Query $updateColumns
-     * @param Constraint[] $constraints this parameter recieves a matched constraint list.
+     * @param bool|array|Query $updateColumns
+     * @param Constraint[] $constraints this parameter receives a matched constraint list.
      * The constraints will be unique by their column names.
      *
-     * @throws Exception|JsonException
-     *
      * @return array
+     *@throws Exception|JsonException
+     *
      */
-    protected function prepareUpsertColumns(string $table, $insertColumns, $updateColumns, array &$constraints = []): array
-    {
+    protected function prepareUpsertColumns(
+        string $table,
+        Query|array $insertColumns,
+        Query|bool|array $updateColumns,
+        array &$constraints = []
+    ): array {
         if ($insertColumns instanceof Query) {
-            [$insertNames] = $this->prepareInsertSelectSubQuery($insertColumns, $this->db->getSchema());
+            [$insertNames] = $this->prepareInsertSelectSubQuery($insertColumns);
         } else {
-            $insertNames = array_map([$this->db, 'quoteColumnName'], array_keys($insertColumns));
+            $insertNames = array_map([$this->quoter, 'quoteColumnName'], array_keys($insertColumns));
         }
 
         $uniqueNames = $this->getTableUniqueColumnNames($table, $insertNames, $constraints);
-
-        $uniqueNames = array_map([$this->db, 'quoteColumnName'], $uniqueNames);
+        $uniqueNames = array_map([$this->quoter, 'quoteColumnName'], $uniqueNames);
 
         if ($updateColumns !== true) {
             return [$uniqueNames, $insertNames, null];
@@ -618,7 +675,7 @@ class QueryBuilder
      *
      * @param string $name table name. The table name may contain schema name if any. Do not quote the table name.
      * @param string[] $columns source column list.
-     * @param Constraint[] $constraints this parameter optionally recieves a matched constraint list. The constraints
+     * @param Constraint[] $constraints this parameter optionally receives a matched constraint list. The constraints
      * will be unique by their column names.
      *
      * @throws JsonException
@@ -627,26 +684,24 @@ class QueryBuilder
      */
     private function getTableUniqueColumnNames(string $name, array $columns, array &$constraints = []): array
     {
-        $schema = $this->db->getSchema();
-
-        if (!$schema instanceof ConstraintFinderInterface) {
+        if (!$this->schema instanceof ConstraintFinderInterface) {
             return [];
         }
 
         $constraints = [];
-        $primaryKey = $schema->getTablePrimaryKey($name);
+        $primaryKey = $this->schema->getTablePrimaryKey($name);
 
         if ($primaryKey !== null) {
             $constraints[] = $primaryKey;
         }
 
-        foreach ($schema->getTableIndexes($name) as $constraint) {
+        foreach ($this->schema->getTableIndexes($name) as $constraint) {
             if ($constraint->isUnique()) {
                 $constraints[] = $constraint;
             }
         }
 
-        $constraints = array_merge($constraints, $schema->getTableUniques($name));
+        $constraints = array_merge($constraints, $this->schema->getTableUniques($name));
 
         /** Remove duplicates */
         $constraints = array_combine(
@@ -663,14 +718,15 @@ class QueryBuilder
         );
 
         $columnNames = [];
+        $quoter = $this->quoter;
 
         /** Remove all constraints which do not cover the specified column list */
         $constraints = array_values(
             array_filter(
                 $constraints,
-                static function ($constraint) use ($schema, $columns, &$columnNames) {
+                static function ($constraint) use ($quoter, $columns, &$columnNames) {
                     /** @psalm-suppress UndefinedClass, UndefinedMethod */
-                    $constraintColumnNames = array_map([$schema, 'quoteColumnName'], $constraint->getColumnNames());
+                    $constraintColumnNames = array_map([$quoter, 'quoteColumnName'], $constraint->getColumnNames());
                     $result = !array_diff($constraintColumnNames, $columns);
 
                     if ($result) {
@@ -710,14 +766,14 @@ class QueryBuilder
      *
      * @return string the UPDATE SQL.
      */
-    public function update(string $table, array $columns, $condition, array &$params = []): string
+    public function update(string $table, array $columns, array|string $condition, array &$params = []): string
     {
         /**
-         * @psalm-var array<array-key, mixed> $lines
-         * @psalm-var array<array-key, mixed> $params
+         * @psalm-var array $lines
+         * @psalm-var array $params
          */
         [$lines, $params] = $this->prepareUpdateSets($table, $columns, $params);
-        $sql = 'UPDATE ' . $this->db->quoteTableName($table) . ' SET ' . implode(', ', $lines);
+        $sql = 'UPDATE ' . $this->quoter->quoteTableName($table) . ' SET ' . implode(', ', $lines);
         $where = $this->buildWhere($condition, $params);
 
         return ($where === '') ? $sql : ($sql . ' ' . $where);
@@ -740,7 +796,7 @@ class QueryBuilder
      */
     protected function prepareUpdateSets(string $table, array $columns, array $params = []): array
     {
-        $tableSchema = $this->db->getTableSchema($table);
+        $tableSchema = $this->schema->getTableSchema($table);
 
         $columnSchemas = $tableSchema !== null ? $tableSchema->getColumns() : [];
 
@@ -755,7 +811,7 @@ class QueryBuilder
                 $placeholder = $this->bindParam($value, $params);
             }
 
-            $sets[] = $this->db->quoteColumnName($name) . '=' . $placeholder;
+            $sets[] = $this->quoter->quoteColumnName($name) . '=' . $placeholder;
         }
 
         return [$sets, $params];
@@ -782,9 +838,9 @@ class QueryBuilder
      *
      * @return string the DELETE SQL.
      */
-    public function delete(string $table, $condition, array &$params): string
+    public function delete(string $table, array|string $condition, array &$params): string
     {
-        $sql = 'DELETE FROM ' . $this->db->quoteTableName($table);
+        $sql = 'DELETE FROM ' . $this->quoter->quoteTableName($table);
         $where = $this->buildWhere($condition, $params);
 
         return ($where === '') ? $sql : ($sql . ' ' . $where);
@@ -814,7 +870,7 @@ class QueryBuilder
      *
      * @param string $table the name of the table to be created. The name will be properly quoted by the method.
      * @param array $columns the columns (name => definition) in the new table.
-     * @param string|null $options additional SQL fragment that will be appended to the generated SQL.
+     * @param string|null $options additional SQL fragments that will be appended to the generated SQL.
      *
      * @psalm-param array<array-key, ColumnSchemaBuilder|string> $columns
      *
@@ -826,13 +882,13 @@ class QueryBuilder
 
         foreach ($columns as $name => $type) {
             if (is_string($name)) {
-                $cols[] = "\t" . $this->db->quoteColumnName($name) . ' ' . $this->getColumnType($type);
+                $cols[] = "\t" . $this->quoter->quoteColumnName($name) . ' ' . $this->getColumnType($type);
             } else {
                 $cols[] = "\t" . $type;
             }
         }
 
-        $sql = 'CREATE TABLE ' . $this->db->quoteTableName($table) . " (\n" . implode(",\n", $cols) . "\n)";
+        $sql = 'CREATE TABLE ' . $this->quoter->quoteTableName($table) . " (\n" . implode(",\n", $cols) . "\n)";
 
         return ($options === null) ? $sql : ($sql . ' ' . $options);
     }
@@ -847,7 +903,8 @@ class QueryBuilder
      */
     public function renameTable(string $oldName, string $newName): string
     {
-        return 'RENAME TABLE ' . $this->db->quoteTableName($oldName) . ' TO ' . $this->db->quoteTableName($newName);
+        return 'RENAME TABLE ' . $this->quoter->quoteTableName($oldName) .
+            ' TO ' . $this->quoter->quoteTableName($newName);
     }
 
     /**
@@ -859,7 +916,7 @@ class QueryBuilder
      */
     public function dropTable(string $table): string
     {
-        return 'DROP TABLE ' . $this->db->quoteTableName($table);
+        return 'DROP TABLE ' . $this->quoter->quoteTableName($table);
     }
 
     /**
@@ -873,18 +930,18 @@ class QueryBuilder
      *
      * @return string the SQL statement for adding a primary key constraint to an existing table.
      */
-    public function addPrimaryKey(string $name, string $table, $columns): string
+    public function addPrimaryKey(string $name, string $table, array|string $columns): string
     {
         if (is_string($columns)) {
             $columns = preg_split('/\s*,\s*/', $columns, -1, PREG_SPLIT_NO_EMPTY);
         }
 
         foreach ($columns as $i => $col) {
-            $columns[$i] = $this->db->quoteColumnName($col);
+            $columns[$i] = $this->quoter->quoteColumnName($col);
         }
 
-        return 'ALTER TABLE ' . $this->db->quoteTableName($table) . ' ADD CONSTRAINT '
-            . $this->db->quoteColumnName($name) . ' PRIMARY KEY ('
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table) . ' ADD CONSTRAINT '
+            . $this->quoter->quoteColumnName($name) . ' PRIMARY KEY ('
             . implode(', ', $columns) . ')';
     }
 
@@ -898,8 +955,8 @@ class QueryBuilder
      */
     public function dropPrimaryKey(string $name, string $table): string
     {
-        return 'ALTER TABLE ' . $this->db->quoteTableName($table)
-            . ' DROP CONSTRAINT ' . $this->db->quoteColumnName($name);
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
+            . ' DROP CONSTRAINT ' . $this->quoter->quoteColumnName($name);
     }
 
     /**
@@ -911,7 +968,7 @@ class QueryBuilder
      */
     public function truncateTable(string $table): string
     {
-        return 'TRUNCATE TABLE ' . $this->db->quoteTableName($table);
+        return 'TRUNCATE TABLE ' . $this->quoter->quoteTableName($table);
     }
 
     /**
@@ -930,8 +987,8 @@ class QueryBuilder
      */
     public function addColumn(string $table, string $column, string $type): string
     {
-        return 'ALTER TABLE ' . $this->db->quoteTableName($table)
-            . ' ADD ' . $this->db->quoteColumnName($column) . ' '
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
+            . ' ADD ' . $this->quoter->quoteColumnName($column) . ' '
             . $this->getColumnType($type);
     }
 
@@ -945,8 +1002,8 @@ class QueryBuilder
      */
     public function dropColumn(string $table, string $column): string
     {
-        return 'ALTER TABLE ' . $this->db->quoteTableName($table)
-            . ' DROP COLUMN ' . $this->db->quoteColumnName($column);
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
+            . ' DROP COLUMN ' . $this->quoter->quoteColumnName($column);
     }
 
     /**
@@ -960,9 +1017,9 @@ class QueryBuilder
      */
     public function renameColumn(string $table, string $oldName, string $newName): string
     {
-        return 'ALTER TABLE ' . $this->db->quoteTableName($table)
-            . ' RENAME COLUMN ' . $this->db->quoteColumnName($oldName)
-            . ' TO ' . $this->db->quoteColumnName($newName);
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
+            . ' RENAME COLUMN ' . $this->quoter->quoteColumnName($oldName)
+            . ' TO ' . $this->quoter->quoteColumnName($newName);
     }
 
     /**
@@ -980,9 +1037,9 @@ class QueryBuilder
      */
     public function alterColumn(string $table, string $column, string $type): string
     {
-        return 'ALTER TABLE ' . $this->db->quoteTableName($table) . ' CHANGE '
-            . $this->db->quoteColumnName($column) . ' '
-            . $this->db->quoteColumnName($column) . ' '
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table) . ' CHANGE '
+            . $this->quoter->quoteColumnName($column) . ' '
+            . $this->quoter->quoteColumnName($column) . ' '
             . $this->getColumnType($type);
     }
 
@@ -1012,16 +1069,16 @@ class QueryBuilder
     public function addForeignKey(
         string $name,
         string $table,
-        $columns,
+        array|string $columns,
         string $refTable,
-        $refColumns,
+        array|string $refColumns,
         ?string $delete = null,
         ?string $update = null
     ): string {
-        $sql = 'ALTER TABLE ' . $this->db->quoteTableName($table)
-            . ' ADD CONSTRAINT ' . $this->db->quoteColumnName($name)
+        $sql = 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
+            . ' ADD CONSTRAINT ' . $this->quoter->quoteColumnName($name)
             . ' FOREIGN KEY (' . $this->buildColumns($columns) . ')'
-            . ' REFERENCES ' . $this->db->quoteTableName($refTable)
+            . ' REFERENCES ' . $this->quoter->quoteTableName($refTable)
             . ' (' . $this->buildColumns($refColumns) . ')';
 
         if ($delete !== null) {
@@ -1046,8 +1103,8 @@ class QueryBuilder
      */
     public function dropForeignKey(string $name, string $table): string
     {
-        return 'ALTER TABLE ' . $this->db->quoteTableName($table)
-            . ' DROP CONSTRAINT ' . $this->db->quoteColumnName($name);
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
+            . ' DROP CONSTRAINT ' . $this->quoter->quoteColumnName($name);
     }
 
     /**
@@ -1067,11 +1124,11 @@ class QueryBuilder
      *
      * @return string the SQL statement for creating a new index.
      */
-    public function createIndex(string $name, string $table, $columns, bool $unique = false): string
+    public function createIndex(string $name, string $table, array|string $columns, bool $unique = false): string
     {
         return ($unique ? 'CREATE UNIQUE INDEX ' : 'CREATE INDEX ')
-            . $this->db->quoteTableName($name) . ' ON '
-            . $this->db->quoteTableName($table)
+            . $this->quoter->quoteTableName($name) . ' ON '
+            . $this->quoter->quoteTableName($table)
             . ' (' . $this->buildColumns($columns) . ')';
     }
 
@@ -1085,11 +1142,12 @@ class QueryBuilder
      */
     public function dropIndex(string $name, string $table): string
     {
-        return 'DROP INDEX ' . $this->db->quoteTableName($name) . ' ON ' . $this->db->quoteTableName($table);
+        return 'DROP INDEX ' . $this->quoter->quoteTableName($name) . ' ON '
+            . $this->quoter->quoteTableName($table);
     }
 
     /**
-     * Creates a SQL command for adding an unique constraint to an existing table.
+     * Creates a SQL command for adding a unique constraint to an existing table.
      *
      * @param string $name the name of the unique constraint. The name will be properly quoted by the method.
      * @param string $table the table that the unique constraint will be added to. The name will be properly quoted by
@@ -1099,7 +1157,7 @@ class QueryBuilder
      *
      * @psalm-param array<array-key, string>|string $columns
      *
-     * @return string the SQL statement for adding an unique constraint to an existing table.
+     * @return string the SQL statement for adding a unique constraint to an existing table.
      */
     public function addUnique(string $name, string $table, $columns): string
     {
@@ -1108,16 +1166,16 @@ class QueryBuilder
         }
 
         foreach ($columns as $i => $col) {
-            $columns[$i] = $this->db->quoteColumnName($col);
+            $columns[$i] = $this->quoter->quoteColumnName($col);
         }
 
-        return 'ALTER TABLE ' . $this->db->quoteTableName($table) . ' ADD CONSTRAINT '
-            . $this->db->quoteColumnName($name) . ' UNIQUE ('
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table) . ' ADD CONSTRAINT '
+            . $this->quoter->quoteColumnName($name) . ' UNIQUE ('
             . implode(', ', $columns) . ')';
     }
 
     /**
-     * Creates a SQL command for dropping an unique constraint.
+     * Creates a SQL command for dropping a unique constraint.
      *
      * @param string $name the name of the unique constraint to be dropped. The name will be properly quoted by the
      * method.
@@ -1128,8 +1186,8 @@ class QueryBuilder
      */
     public function dropUnique(string $name, string $table): string
     {
-        return 'ALTER TABLE ' . $this->db->quoteTableName($table)
-            . ' DROP CONSTRAINT ' . $this->db->quoteColumnName($name);
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
+            . ' DROP CONSTRAINT ' . $this->quoter->quoteColumnName($name);
     }
 
     /**
@@ -1144,8 +1202,9 @@ class QueryBuilder
      */
     public function addCheck(string $name, string $table, string $expression): string
     {
-        return 'ALTER TABLE ' . $this->db->quoteTableName($table) . ' ADD CONSTRAINT '
-            . $this->db->quoteColumnName($name) . ' CHECK (' . $this->db->quoteSql($expression) . ')';
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table) . ' ADD CONSTRAINT '
+            . $this->quoter->quoteColumnName($name)
+            . ' CHECK (' . $this->quoter->quoteSql($expression) . ')';
     }
 
     /**
@@ -1160,86 +1219,8 @@ class QueryBuilder
      */
     public function dropCheck(string $name, string $table): string
     {
-        return 'ALTER TABLE ' . $this->db->quoteTableName($table)
-            . ' DROP CONSTRAINT ' . $this->db->quoteColumnName($name);
-    }
-
-    /**
-     * Creates a SQL command for adding a default value constraint to an existing table.
-     *
-     * @param string $name the name of the default value constraint.
-     * The name will be properly quoted by the method.
-     * @param string $table the table that the default value constraint will be added to.
-     * The name will be properly quoted by the method.
-     * @param string $column the name of the column to that the constraint will be added on.
-     * The name will be properly quoted by the method.
-     * @param mixed $value default value.
-     *
-     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
-     *
-     * @return string the SQL statement for adding a default value constraint to an existing table.
-     */
-    public function addDefaultValue(string $name, string $table, string $column, $value): string
-    {
-        throw new NotSupportedException(
-            $this->db->getDriverName() . ' does not support adding default value constraints.'
-        );
-    }
-
-    /**
-     * Creates a SQL command for dropping a default value constraint.
-     *
-     * @param string $name the name of the default value constraint to be dropped.
-     * The name will be properly quoted by the method.
-     * @param string $table the table whose default value constraint is to be dropped.
-     * The name will be properly quoted by the method.
-     *
-     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
-     *
-     * @return string the SQL statement for dropping a default value constraint.
-     */
-    public function dropDefaultValue(string $name, string $table): string
-    {
-        throw new NotSupportedException(
-            $this->db->getDriverName() . ' does not support dropping default value constraints.'
-        );
-    }
-
-    /**
-     * Creates a SQL statement for resetting the sequence value of a table's primary key.
-     *
-     * The sequence will be reset such that the primary key of the next new row inserted will have the specified value
-     * or 1.
-     *
-     * @param string $tableName the name of the table whose primary key sequence will be reset.
-     * @param array|string|null $value the value for the primary key of the next new row inserted. If this is not set,
-     * the next new row's primary key will have a value 1.
-     *
-     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
-     *
-     * @return string the SQL statement for resetting sequence.
-     */
-    public function resetSequence(string $tableName, $value = null): string
-    {
-        throw new NotSupportedException($this->db->getDriverName() . ' does not support resetting sequence.');
-    }
-
-    /**
-     * Builds a SQL statement for enabling or disabling integrity check.
-     *
-     * @param string $schema the schema of the tables. Defaults to empty string, meaning the current or default schema.
-     * @param string $table the table name. Defaults to empty string, meaning that no table will be changed.
-     * @param bool $check whether to turn on or off the integrity check.
-     *
-     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
-     *
-     * @return string the SQL statement for checking integrity.
-     */
-    public function checkIntegrity(string $schema = '', string $table = '', bool $check = true): string
-    {
-        throw new NotSupportedException(
-            $this->db->getDriverName() . ' does not support enabling/disabling integrity check.'
-        );
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
+            . ' DROP CONSTRAINT ' . $this->quoter->quoteColumnName($name);
     }
 
     /**
@@ -1251,14 +1232,13 @@ class QueryBuilder
      * method.
      * @param string $comment the text of the comment to be added. The comment will be properly quoted by the method.
      *
-     * @throws Exception
-     *
      * @return string the SQL statement for adding comment on column.
      */
     public function addCommentOnColumn(string $table, string $column, string $comment): string
     {
-        return 'COMMENT ON COLUMN ' . $this->db->quoteTableName($table) . '.' . $this->db->quoteColumnName($column)
-            . ' IS ' . $this->db->quoteValue($comment);
+        return 'COMMENT ON COLUMN ' . $this->quoter->quoteTableName($table) . '.'
+            . $this->quoter->quoteColumnName($column) . ' IS '
+            . $this->quoter->quoteValue($comment);
     }
 
     /**
@@ -1268,13 +1248,12 @@ class QueryBuilder
      * method.
      * @param string $comment the text of the comment to be added. The comment will be properly quoted by the method.
      *
-     * @throws Exception
-     *
      * @return string the SQL statement for adding comment on table.
      */
     public function addCommentOnTable(string $table, string $comment): string
     {
-        return 'COMMENT ON TABLE ' . $this->db->quoteTableName($table) . ' IS ' . $this->db->quoteValue($comment);
+        return 'COMMENT ON TABLE ' . $this->quoter->quoteTableName($table)
+            . ' IS ' . $this->quoter->quoteValue($comment);
     }
 
     /**
@@ -1289,8 +1268,8 @@ class QueryBuilder
      */
     public function dropCommentFromColumn(string $table, string $column): string
     {
-        return 'COMMENT ON COLUMN ' . $this->db->quoteTableName($table) . '.' . $this->db->quoteColumnName($column)
-            . ' IS NULL';
+        return 'COMMENT ON COLUMN ' . $this->quoter->quoteTableName($table) . '.'
+            . $this->quoter->quoteColumnName($column) . ' IS NULL';
     }
 
     /**
@@ -1303,7 +1282,7 @@ class QueryBuilder
      */
     public function dropCommentFromTable(string $table): string
     {
-        return 'COMMENT ON TABLE ' . $this->db->quoteTableName($table) . ' IS NULL';
+        return 'COMMENT ON TABLE ' . $this->quoter->quoteTableName($table) . ' IS NULL';
     }
 
     /**
@@ -1325,13 +1304,13 @@ class QueryBuilder
             [$rawQuery, $params] = $this->build($subQuery);
 
             foreach ($params as $key => $value) {
-                $params[$key] = $this->db->quoteValue($value);
+                $params[$key] = $this->quoter->quoteValue($value);
             }
 
             $subQuery = strtr($rawQuery, $params);
         }
 
-        return 'CREATE VIEW ' . $this->db->quoteTableName($viewName) . ' AS ' . $subQuery;
+        return 'CREATE VIEW ' . $this->quoter->quoteTableName($viewName) . ' AS ' . $subQuery;
     }
 
     /**
@@ -1343,7 +1322,7 @@ class QueryBuilder
      */
     public function dropView(string $viewName): string
     {
-        return 'DROP VIEW ' . $this->db->quoteTableName($viewName);
+        return 'DROP VIEW ' . $this->quoter->quoteTableName($viewName);
     }
 
     /**
@@ -1452,23 +1431,24 @@ class QueryBuilder
                 if (is_int($i)) {
                     $columns[$i] = $this->buildExpression($column, $params);
                 } else {
-                    $columns[$i] = $this->buildExpression($column, $params) . ' AS ' . $this->db->quoteColumnName($i);
+                    $columns[$i] = $this->buildExpression($column, $params) . ' AS '
+                        . $this->quoter->quoteColumnName($i);
                 }
             } elseif ($column instanceof Query) {
                 [$sql, $params] = $this->build($column, $params);
-                $columns[$i] = "($sql) AS " . $this->db->quoteColumnName((string) $i);
+                $columns[$i] = "($sql) AS " . $this->quoter->quoteColumnName((string) $i);
             } elseif (is_string($i) && $i !== $column) {
-                if (strpos($column, '(') === false) {
-                    $column = $this->db->quoteColumnName($column);
+                if (!str_contains($column, '(')) {
+                    $column = $this->quoter->quoteColumnName($column);
                 }
-                $columns[$i] = "$column AS " . $this->db->quoteColumnName($i);
-            } elseif (strpos($column, '(') === false) {
+                $columns[$i] = "$column AS " . $this->quoter->quoteColumnName($i);
+            } elseif (!str_contains($column, '(')) {
                 if (preg_match('/^(.*?)(?i:\s+as\s+|\s+)([\w\-_.]+)$/', $column, $matches)) {
-                    $columns[$i] = $this->db->quoteColumnName(
+                    $columns[$i] = $this->quoter->quoteColumnName(
                         $matches[1]
-                    ) . ' AS ' . $this->db->quoteColumnName($matches[2]);
+                    ) . ' AS ' . $this->quoter->quoteColumnName($matches[2]);
                 } else {
-                    $columns[$i] = $this->db->quoteColumnName($column);
+                    $columns[$i] = $this->quoter->quoteColumnName($column);
                 }
             }
         }
@@ -1566,19 +1546,19 @@ class QueryBuilder
         foreach ($tables as $i => $table) {
             if ($table instanceof Query) {
                 [$sql, $params] = $this->build($table, $params);
-                $tables[$i] = "($sql) " . $this->db->quoteTableName((string) $i);
+                $tables[$i] = "($sql) " . $this->quoter->quoteTableName((string) $i);
             } elseif (is_string($table) && is_string($i)) {
-                if (strpos($table, '(') === false) {
-                    $table = $this->db->quoteTableName($table);
+                if (!str_contains($table, '(')) {
+                    $table = $this->quoter->quoteTableName($table);
                 }
-                $tables[$i] = "$table " . $this->db->quoteTableName($i);
-            } elseif (is_string($table) && strpos($table, '(') === false) {
+                $tables[$i] = "$table " . $this->quoter->quoteTableName($i);
+            } elseif (is_string($table) && !str_contains($table, '(')) {
                 $tableWithAlias = $this->extractAlias($table);
                 if (is_array($tableWithAlias)) { // with alias
-                    $tables[$i] = $this->db->quoteTableName($tableWithAlias[1]) . ' '
-                        . $this->db->quoteTableName($tableWithAlias[2]);
+                    $tables[$i] = $this->quoter->quoteTableName($tableWithAlias[1]) . ' '
+                        . $this->quoter->quoteTableName($tableWithAlias[2]);
                 } else {
-                    $tables[$i] = $this->db->quoteTableName($table);
+                    $tables[$i] = $this->quoter->quoteTableName($table);
                 }
             }
         }
@@ -1587,17 +1567,18 @@ class QueryBuilder
     }
 
     /**
-     * @param array|string $condition
+     * @param array|string|ConditionInterface|ExpressionInterface|null $condition
      * @param array $params the binding parameters to be populated.
      *
      * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
      *
      * @return string the WHERE clause built from {@see Query::$where}.
      */
-    public function buildWhere($condition, array &$params = []): string
-    {
+    public function buildWhere(
+        array|string|ConditionInterface|ExpressionInterface|null $condition,
+        array &$params = []
+    ): string {
         $where = $this->buildCondition($condition, $params);
-
         return ($where === '') ? '' : ('WHERE ' . $where);
     }
 
@@ -1622,7 +1603,7 @@ class QueryBuilder
                 $columns[$i] = $this->buildExpression($column);
                 $params = array_merge($params, $column->getParams());
             } elseif (strpos($column, '(') === false) {
-                $columns[$i] = $this->db->quoteColumnName($column);
+                $columns[$i] = $this->quoter->quoteColumnName($column);
             }
         }
 
@@ -1630,14 +1611,14 @@ class QueryBuilder
     }
 
     /**
-     * @param array|string $condition
+     * @param array|string|null $condition
      * @param array $params the binding parameters to be populated.
      *
      * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
      *
      * @return string the HAVING clause built from {@see Query::$having}.
      */
-    public function buildHaving($condition, array &$params = []): string
+    public function buildHaving(array|string|null $condition, array &$params = []): string
     {
         $having = $this->buildCondition($condition, $params);
 
@@ -1650,8 +1631,8 @@ class QueryBuilder
      * @param string $sql the existing SQL (without ORDER BY/LIMIT/OFFSET).
      * @param array $orderBy the order by columns. See {@see Query::orderBy} for more details on how to specify this
      * parameter.
-     * @param Expression|int|null $limit the limit number. See {@see Query::limit} for more details.
-     * @param Expression|int|null $offset the offset number. See {@see Query::offset} for more details.
+     * @param int|Expression|null $limit the limit number. See {@see Query::limit} for more details.
+     * @param int|Expression|null $offset the offset number. See {@see Query::offset} for more details.
      * @param array $params the binding parameters to be populated.
      *
      * @psalm-param array<string, Expression|int|string> $orderBy
@@ -1663,8 +1644,8 @@ class QueryBuilder
     public function buildOrderByAndLimit(
         string $sql,
         array $orderBy,
-        $limit,
-        $offset,
+        Expression|int|null $limit,
+        Expression|int|null $offset,
         array &$params = []
     ): string {
         $orderBy = $this->buildOrderBy($orderBy, $params);
@@ -1702,7 +1683,7 @@ class QueryBuilder
                 $orders[] = $this->buildExpression($direction);
                 $params = array_merge($params, $direction->getParams());
             } else {
-                $orders[] = $this->db->quoteColumnName($name) . ($direction === SORT_DESC ? ' DESC' : '');
+                $orders[] = $this->quoter->quoteColumnName($name) . ($direction === SORT_DESC ? ' DESC' : '');
             }
         }
 
@@ -1710,12 +1691,12 @@ class QueryBuilder
     }
 
     /**
-     * @param Expression|int|null $limit
-     * @param Expression|int|null $offset
+     * @param int|Expression|null $limit
+     * @param int|Expression|null $offset
      *
      * @return string the LIMIT and OFFSET clauses.
      */
-    public function buildLimit($limit, $offset): string
+    public function buildLimit(Expression|int|null $limit, Expression|int|null $offset): string
     {
         $sql = '';
 
@@ -1737,7 +1718,7 @@ class QueryBuilder
      *
      * @return bool whether the limit is effective.
      */
-    protected function hasLimit($limit): bool
+    protected function hasLimit(mixed $limit): bool
     {
         return ($limit instanceof ExpressionInterface) || ctype_digit((string) $limit);
     }
@@ -1749,7 +1730,7 @@ class QueryBuilder
      *
      * @return bool whether the offset is effective.
      */
-    protected function hasOffset($offset): bool
+    protected function hasOffset(mixed $offset): bool
     {
         return ($offset instanceof ExpressionInterface) || (ctype_digit((string)$offset) && (string)$offset !== '0');
     }
@@ -1797,10 +1778,10 @@ class QueryBuilder
      *
      * @return string the processing result.
      */
-    public function buildColumns($columns): string
+    public function buildColumns(array|string $columns): string
     {
         if (!is_array($columns)) {
-            if (strpos($columns, '(') !== false) {
+            if (str_contains($columns, '(')) {
                 return $columns;
             }
 
@@ -1814,8 +1795,8 @@ class QueryBuilder
         foreach ($columns as $i => $column) {
             if ($column instanceof ExpressionInterface) {
                 $columns[$i] = $this->buildExpression($column);
-            } elseif (strpos($column, '(') === false) {
-                $columns[$i] = $this->db->quoteColumnName($column);
+            } elseif (!str_contains($column, '(')) {
+                $columns[$i] = $this->quoter->quoteColumnName($column);
             }
         }
 
@@ -1825,7 +1806,7 @@ class QueryBuilder
     /**
      * Parses the condition specification and generates the corresponding SQL expression.
      *
-     * @param array|ExpressionInterface|string|null $condition the condition specification.
+     * @param array|string|ExpressionInterface|null $condition the condition specification.
      * Please refer to {@see Query::where()} on how to specify a condition.
      * @param array $params the binding parameters to be populated.
      *
@@ -1833,7 +1814,7 @@ class QueryBuilder
      *
      * @return string the generated SQL expression.
      */
-    public function buildCondition($condition, array &$params = []): string
+    public function buildCondition(array|string|ExpressionInterface|null $condition, array &$params = []): string
     {
         if (is_array($condition)) {
             if (empty($condition)) {
@@ -1853,7 +1834,7 @@ class QueryBuilder
     /**
      * Transforms $condition defined in array format (as described in {@see Query::where()} to instance of
      *
-     * @param array|string $condition.
+     * @param array $condition.
      *
      * @throws InvalidArgumentException
      *
@@ -1880,7 +1861,7 @@ class QueryBuilder
     /**
      * Creates a SELECT EXISTS() SQL statement.
      *
-     * @param string $rawSql the subquery in a raw form to select from.
+     * @param string $rawSql the sub-query in a raw form to select from.
      *
      * @return string the SELECT EXISTS() SQL statement.
      */
@@ -1897,7 +1878,7 @@ class QueryBuilder
      *
      * @return string the placeholder name in $params array.
      */
-    public function bindParam($value, array &$params = []): string
+    public function bindParam(mixed $value, array &$params = []): string
     {
         $phName = self::PARAM_PREFIX . count($params);
 
@@ -1910,13 +1891,11 @@ class QueryBuilder
     /**
      * Extracts table alias if there is one or returns false.
      *
-     * @param $table
+     * @param string $table
      *
      * @return array|bool
-     *
-     * @psalm-return array<array-key, string>|bool
      */
-    protected function extractAlias(string $table)
+    protected function extractAlias(string $table): array|bool
     {
         if (preg_match('/^(.*?)(?i:\s+as|)\s+([^ ]+)$/', $table, $matches)) {
             return $matches;
@@ -1944,7 +1923,7 @@ class QueryBuilder
         $recursive = false;
         $result = [];
 
-        foreach ($withs as $i => $with) {
+        foreach ($withs as $with) {
             if ($with['recursive']) {
                 $recursive = true;
             }
@@ -1960,11 +1939,6 @@ class QueryBuilder
         return 'WITH ' . ($recursive ? 'RECURSIVE ' : '') . implode(', ', $result);
     }
 
-    public function getDb(): ConnectionInterface
-    {
-        return $this->db;
-    }
-
     /**
      * @param string the separator between different fragments of a SQL statement.
      *
@@ -1973,5 +1947,10 @@ class QueryBuilder
     public function setSeparator(string $separator): void
     {
         $this->separator = $separator;
+    }
+
+    public function getQuoter(): QuoterInterface
+    {
+        return $this->quoter;
     }
 }

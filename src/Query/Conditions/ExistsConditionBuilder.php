@@ -19,16 +19,6 @@ class ExistsConditionBuilder implements ExpressionBuilderInterface
 {
     use ExpressionBuilderTrait;
 
-    /**
-     * Method builds the raw SQL from the $expression that will not be additionally escaped or quoted.
-     *
-     * @param ExistsCondition|ExpressionInterface $expression the expression to be built.
-     * @param array $params the binding parameters.
-     *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
-     *
-     * @return string the raw SQL that will not be additionally escaped or quoted.
-     */
     public function build(ExpressionInterface $expression, array &$params = []): string
     {
         $operator = $expression->getOperator();

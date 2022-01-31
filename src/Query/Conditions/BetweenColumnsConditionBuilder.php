@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Query\Conditions;
 
+use Yiisoft\Db\Connection\ConnectionInterface;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\InvalidArgumentException;
 use Yiisoft\Db\Exception\InvalidConfigException;
@@ -22,16 +23,6 @@ class BetweenColumnsConditionBuilder implements ExpressionBuilderInterface
 {
     use ExpressionBuilderTrait;
 
-    /**
-     * Method builds the raw SQL from the $expression that will not be additionally escaped or quoted.
-     *
-     * @param BetweenColumnsCondition|ExpressionInterface $expression the expression to be built.
-     * @param array $params the binding parameters.
-     *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
-     *
-     * @return string the raw SQL that will not be additionally escaped or quoted.
-     */
     public function build(ExpressionInterface $expression, array &$params = []): string
     {
         $operator = $expression->getOperator();
@@ -66,7 +57,7 @@ class BetweenColumnsConditionBuilder implements ExpressionBuilderInterface
         }
 
         if (strpos($columnName, '(') === false) {
-            return $this->queryBuilder->getDb()->quoteColumnName($columnName);
+            return $this->queryBuilder->getQuoter()->quoteColumnName($columnName);
         }
 
         return $columnName;

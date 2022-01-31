@@ -15,7 +15,6 @@ use Yiisoft\Db\Exception\IntegrityException;
 use Yiisoft\Db\Exception\InvalidCallException;
 use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Exception\NotSupportedException;
-use Yiisoft\Db\Query\QueryBuilder;
 
 use function addcslashes;
 use function array_change_key_case;
@@ -44,7 +43,6 @@ use function version_compare;
  *
  * @property string $lastInsertID The row ID of the last row inserted, or the last value retrieved from the sequence
  * object. This property is read-only.
- * @property QueryBuilder $queryBuilder The query builder for this connection. This property is read-only.
  * @property string[] $schemaNames All schema names in the database, except system schemas. This property is read-only.
  * @property string $serverVersion Server version as a string. This property is read-only.
  * @property string[] $tableNames All table names in the database. This property is read-only.
@@ -98,32 +96,14 @@ abstract class Schema
         'SQLSTATE[23' => IntegrityException::class,
     ];
 
-    /**
-     * @var string|string[] character used to quote schema, table, etc. names. An array of 2 characters can be used in
-     * case starting and ending characters are different.
-     */
-    protected $tableQuoteCharacter = "'";
-
-    /**
-     * @var string|string[] character used to quote column names. An array of 2 characters can be used in case starting
-     * and ending characters are different.
-     */
-    protected $columnQuoteCharacter = '"';
     private array $schemaNames = [];
     private array $tableNames = [];
     private array $tableMetadata = [];
     private ?string $serverVersion = null;
-    private ConnectionInterface $db;
-    private ?QueryBuilder $builder = null;
-    private SchemaCache $schemaCache;
 
-    public function __construct(ConnectionInterface $db, SchemaCache $schemaCache)
+    public function __construct(private ConnectionInterface $db, private SchemaCache $schemaCache)
     {
-        $this->db = $db;
-        $this->schemaCache = $schemaCache;
     }
-
-    abstract public function createQueryBuilder(): QueryBuilder;
 
     /**
      * Resolves the table name and schema name (if any).
@@ -255,18 +235,6 @@ abstract class Schema
     }
 
     /**
-     * @return QueryBuilder the query builder for this connection.
-     */
-    public function getQueryBuilder(): QueryBuilder
-    {
-        if ($this->builder === null) {
-            $this->builder = $this->createQueryBuilder();
-        }
-
-        return $this->builder;
-    }
-
-    /**
      * Determines the PDO type for the given PHP data value.
      *
      * @param mixed $data the data whose PDO type is to be determined
@@ -343,7 +311,7 @@ abstract class Schema
     {
         if ($this->db->isActive()) {
             return $this->db->getPDO()->lastInsertId(
-                $sequenceName === '' ? null : $this->quoteTableName($sequenceName)
+                $sequenceName === '' ? null : $this->db->getQuoter()->quoteTableName($sequenceName)
             );
         }
 
@@ -443,197 +411,6 @@ abstract class Schema
         }
 
         return $result;
-    }
-
-    /**
-     * Quotes a string value for use in a query.
-     *
-     * Note that if the parameter is not a string, it will be returned without change.
-     *
-     * @param int|string $str string to be quoted.
-     *
-     * @throws Exception
-     *
-     * @return int|string the properly quoted string.
-     *
-     * {@see http://www.php.net/manual/en/function.PDO-quote.php}
-     */
-    public function quoteValue($str)
-    {
-        if (!is_string($str)) {
-            return $str;
-        }
-
-        if (($value = $this->db->getSlavePdo()->quote($str)) !== false) {
-            return $value;
-        }
-
-        /** the driver doesn't support quote (e.g. oci) */
-        return "'" . addcslashes(str_replace("'", "''", $str), "\000\n\r\\\032") . "'";
-    }
-
-    /**
-     * Quotes a table name for use in a query.
-     *
-     * If the table name contains schema prefix, the prefix will also be properly quoted. If the table name is already
-     * quoted or contains '(' or '{{', then this method will do nothing.
-     *
-     * @param string $name table name.
-     *
-     * @return string the properly quoted table name.
-     *
-     * {@see quoteSimpleTableName()}
-     */
-    public function quoteTableName(string $name): string
-    {
-        if (strpos($name, '(') === 0 && strpos($name, ')') === strlen($name) - 1) {
-            return $name;
-        }
-
-        if (strpos($name, '{{') !== false) {
-            return $name;
-        }
-
-        if (strpos($name, '.') === false) {
-            return $this->quoteSimpleTableName($name);
-        }
-
-        $parts = $this->getTableNameParts($name);
-
-        foreach ($parts as $i => $part) {
-            $parts[$i] = $this->quoteSimpleTableName($part);
-        }
-
-        return implode('.', $parts);
-    }
-
-    /**
-     * Splits full table name into parts
-     *
-     * @param string $name
-     *
-     * @return array
-     */
-    protected function getTableNameParts(string $name): array
-    {
-        return explode('.', $name);
-    }
-
-    /**
-     * Quotes a column name for use in a query.
-     *
-     * If the column name contains prefix, the prefix will also be properly quoted. If the column name is already quoted
-     * or contains '(', '[[' or '{{', then this method will do nothing.
-     *
-     * @param string $name column name.
-     *
-     * @return string the properly quoted column name.
-     *
-     * {@see quoteSimpleColumnName()}
-     */
-    public function quoteColumnName(string $name): string
-    {
-        if (strpos($name, '(') !== false || strpos($name, '[[') !== false) {
-            return $name;
-        }
-
-        if (($pos = strrpos($name, '.')) !== false) {
-            $prefix = $this->quoteTableName(substr($name, 0, $pos)) . '.';
-            $name = substr($name, $pos + 1);
-        } else {
-            $prefix = '';
-        }
-
-        if (strpos($name, '{{') !== false) {
-            return $name;
-        }
-
-        return $prefix . $this->quoteSimpleColumnName($name);
-    }
-
-    /**
-     * Quotes a simple table name for use in a query.
-     *
-     * A simple table name should contain the table name only without any schema prefix. If the table name is already
-     * quoted, this method will do nothing.
-     *
-     * @param string $name table name.
-     *
-     * @return string the properly quoted table name.
-     */
-    public function quoteSimpleTableName(string $name): string
-    {
-        if (is_string($this->tableQuoteCharacter)) {
-            $startingCharacter = $endingCharacter = $this->tableQuoteCharacter;
-        } else {
-            [$startingCharacter, $endingCharacter] = $this->tableQuoteCharacter;
-        }
-
-        return strpos($name, $startingCharacter) !== false ? $name : $startingCharacter . $name . $endingCharacter;
-    }
-
-    /**
-     * Quotes a simple column name for use in a query.
-     *
-     * A simple column name should contain the column name only without any prefix. If the column name is already quoted
-     * or is the asterisk character '*', this method will do nothing.
-     *
-     * @param string $name column name.
-     *
-     * @return string the properly quoted column name.
-     */
-    public function quoteSimpleColumnName(string $name): string
-    {
-        if (is_string($this->columnQuoteCharacter)) {
-            $startingCharacter = $endingCharacter = $this->columnQuoteCharacter;
-        } else {
-            [$startingCharacter, $endingCharacter] = $this->columnQuoteCharacter;
-        }
-
-        return $name === '*' || strpos($name, $startingCharacter) !== false ? $name : $startingCharacter . $name
-            . $endingCharacter;
-    }
-
-    /**
-     * Unquotes a simple table name.
-     *
-     * A simple table name should contain the table name only without any schema prefix. If the table name is not
-     * quoted, this method will do nothing.
-     *
-     * @param string $name table name.
-     *
-     * @return string unquoted table name.
-     */
-    public function unquoteSimpleTableName(string $name): string
-    {
-        if (is_string($this->tableQuoteCharacter)) {
-            $startingCharacter = $this->tableQuoteCharacter;
-        } else {
-            $startingCharacter = $this->tableQuoteCharacter[0];
-        }
-
-        return strpos($name, $startingCharacter) === false ? $name : substr($name, 1, -1);
-    }
-
-    /**
-     * Unquotes a simple column name.
-     *
-     * A simple column name should contain the column name only without any prefix. If the column name is not quoted or
-     * is the asterisk character '*', this method will do nothing.
-     *
-     * @param string $name column name.
-     *
-     * @return string unquoted column name.
-     */
-    public function unquoteSimpleColumnName(string $name): string
-    {
-        if (is_string($this->columnQuoteCharacter)) {
-            $startingCharacter = $this->columnQuoteCharacter;
-        } else {
-            $startingCharacter = $this->columnQuoteCharacter[0];
-        }
-
-        return strpos($name, $startingCharacter) === false ? $name : substr($name, 1, -1);
     }
 
     /**
