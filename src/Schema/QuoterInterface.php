@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Schema;
 
+use Exception;
+
 interface QuoterInterface
 {
     /**
@@ -62,4 +64,28 @@ interface QuoterInterface
      * {@see http://www.php.net/manual/en/function.PDO-quote.php}
      */
     public function quoteValue(int|string $value): int|string;
+
+    /**
+     * Unquotes a simple column name.
+     *
+     * A simple column name should contain the column name only without any prefix. If the column name is not quoted or
+     * is the asterisk character '*', this method will do nothing.
+     *
+     * @param string $name column name.
+     *
+     * @return string unquoted column name.
+     */
+    public function unquoteSimpleColumnName(string $name): string;
+
+        /**
+     * Unquotes a simple table name.
+     *
+     * A simple table name should contain the table name only without any schema prefix. If the table name is not
+     * quoted, this method will do nothing.
+     *
+     * @param string $name table name.
+     *
+     * @return string unquoted table name.
+     */
+    public function unquoteSimpleTableName(string $name): string;
 }

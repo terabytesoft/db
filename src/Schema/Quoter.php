@@ -125,15 +125,37 @@ class Quoter implements QuoterInterface
             return $value;
         }
 
-        if (($value = $pdo->quote($value)) !== false) {
-            unset($pdo);
-            return $value;
-        }
-
+        $valueQuoted = $pdo->quote($value);
         unset($pdo);
+
+        if ($valueQuoted !== false) {
+            return $valueQuoted;
+        }
 
         /** the driver doesn't support quote (e.g. oci) */
         return "'" . addcslashes(str_replace("'", "''", $value), "\000\n\r\\\032") . "'";
+    }
+
+    public function unquoteSimpleColumnName(string $name): string
+    {
+        if (is_string($this->columnQuoteCharacter)) {
+            $startingCharacter = $this->columnQuoteCharacter;
+        } else {
+            $startingCharacter = $this->columnQuoteCharacter[0];
+        }
+
+        return strpos($name, $startingCharacter) === false ? $name : substr($name, 1, -1);
+    }
+
+    public function unquoteSimpleTableName(string $name): string
+    {
+        if (is_string($this->tableQuoteCharacter)) {
+            $startingCharacter = $this->tableQuoteCharacter;
+        } else {
+            $startingCharacter = $this->tableQuoteCharacter[0];
+        }
+
+        return strpos($name, $startingCharacter) === false ? $name : substr($name, 1, -1);
     }
 
     /**
