@@ -4,14 +4,11 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Schema;
 
-use Yiisoft\Db\Driver\PDODriver;
-
 class Quoter implements QuoterInterface
 {
     public function __construct(
         private array|string $columnQuoteCharacter,
         private array|string $tableQuoteCharacter,
-        private PDODriver $PDODriver,
         private string $tablePrefix = ''
     ) {
     }
@@ -99,21 +96,11 @@ class Quoter implements QuoterInterface
 
     public function quoteValue(int|string $value): int|string
     {
-        $pdo = $this->PDODriver->createConnection();
-
         if (!is_string($value)) {
             return $value;
         }
 
-        $valueQuoted = $pdo->quote($value);
-        unset($pdo);
-
-        if ($valueQuoted !== false) {
-            return $valueQuoted;
-        }
-
-        /** the driver doesn't support quote (e.g. oci) */
-        return "'" . addcslashes(str_replace("'", "''", $value), "\000\n\r\\\032") . "'";
+        return '\'' . str_replace('\'', '\'\'', addcslashes($value, "\000\032")) . '\'';
     }
 
     public function unquoteSimpleColumnName(string $name): string
