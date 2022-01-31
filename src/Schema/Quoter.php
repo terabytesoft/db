@@ -36,16 +36,6 @@ class Quoter implements QuoterInterface
         return $prefix . $this->quoteSimpleColumnName($name);
     }
 
-    /**
-     * Quotes a simple column name for use in a query.
-     *
-     * A simple column name should contain the column name only without any prefix. If the column name is already quoted
-     * or is the asterisk character '*', this method will do nothing.
-     *
-     * @param string $name column name.
-     *
-     * @return string the properly quoted column name.
-     */
     public function quoteSimpleColumnName(string $name): string
     {
         if (is_string($this->columnQuoteCharacter)) {
@@ -58,16 +48,6 @@ class Quoter implements QuoterInterface
             . $endingCharacter;
     }
 
-    /**
-     * Quotes a simple table name for use in a query.
-     *
-     * A simple table name should contain the table name only without any schema prefix. If the table name is already
-     * quoted, this method will do nothing.
-     *
-     * @param string $name table name.
-     *
-     * @return string the properly quoted table name.
-     */
     public function quoteSimpleTableName(string $name): string
     {
         if (is_string($this->tableQuoteCharacter)) {

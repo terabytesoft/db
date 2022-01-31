@@ -23,6 +23,30 @@ interface QuoterInterface
     public function quoteColumnName(string $name): string;
 
     /**
+     * Quotes a simple column name for use in a query.
+     *
+     * A simple column name should contain the column name only without any prefix. If the column name is already quoted
+     * or is the asterisk character '*', this method will do nothing.
+     *
+     * @param string $name column name.
+     *
+     * @return string the properly quoted column name.
+     */
+    public function quoteSimpleColumnName(string $name): string;
+
+    /**
+     * Quotes a simple table name for use in a query.
+     *
+     * A simple table name should contain the table name only without any schema prefix. If the table name is already
+     * quoted, this method will do nothing.
+     *
+     * @param string $name table name.
+     *
+     * @return string the properly quoted table name.
+     */
+    public function quoteSimpleTableName(string $name): string;
+
+    /**
      * Processes a SQL statement by quoting table and column names that are enclosed within double brackets.
      *
      * Tokens enclosed within double curly brackets are treated as table names, while tokens enclosed within double
