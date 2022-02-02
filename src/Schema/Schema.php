@@ -36,24 +36,7 @@ use function substr;
 use function ucfirst;
 use function version_compare;
 
-/**
- * Schema is the base class for concrete DBMS-specific schema classes.
- *
- * Schema represents the database schema information that is DBMS specific.
- *
- * @property string $lastInsertID The row ID of the last row inserted, or the last value retrieved from the sequence
- * object. This property is read-only.
- * @property string[] $schemaNames All schema names in the database, except system schemas. This property is read-only.
- * @property string $serverVersion Server version as a string. This property is read-only.
- * @property string[] $tableNames All table names in the database. This property is read-only.
- * @property TableSchema[] $tableSchemas The metadata for all tables in the database. Each array element is an instance
- * of {@see TableSchema} or its child class. This property is read-only.
- * @property string $transactionIsolationLevel The transaction isolation level to use for this transaction. This can be
- * one of {@see Transaction::READ_UNCOMMITTED}, {@see Transaction::READ_COMMITTED},
- * {@see Transaction::REPEATABLE_READ} and {@see Transaction::SERIALIZABLE} but also a string containing DBMS specific
- * syntax to be used after `SET TRANSACTION ISOLATION LEVEL`. This property is write-only.
- */
-abstract class Schema
+abstract class Schema implements SchemaInterface
 {
     public const TYPE_PK = 'pk';
     public const TYPE_UPK = 'upk';
@@ -99,9 +82,8 @@ abstract class Schema
     private array $schemaNames = [];
     private array $tableNames = [];
     private array $tableMetadata = [];
-    private ?string $serverVersion = null;
 
-    public function __construct(private ConnectionInterface $db, private SchemaCache $schemaCache)
+    public function __construct(private SchemaCache $schemaCache)
     {
     }
 
@@ -234,15 +216,6 @@ abstract class Schema
         return $this->tableNames[$schema];
     }
 
-    /**
-     * Determines the PDO type for the given PHP data value.
-     *
-     * @param mixed $data the data whose PDO type is to be determined
-     *
-     * @return int the PDO type
-     *
-     * {@see http://www.php.net/manual/en/pdo.constants.php}
-     */
     public function getPdoType($data): int
     {
         static $typeMap = [
@@ -275,14 +248,6 @@ abstract class Schema
         $this->tableMetadata = [];
     }
 
-    /**
-     * Refreshes the particular table schema.
-     *
-     * This method cleans up cached table schema so that it can be re-created later to reflect the database schema
-     * change.
-     *
-     * @param string $name table name.
-     */
     public function refreshTableSchema(string $name): void
     {
         $rawName = $this->getRawTableName($name);
@@ -294,144 +259,6 @@ abstract class Schema
         if ($this->schemaCache->isEnabled()) {
             $this->schemaCache->remove($this->getCacheKey($rawName));
         }
-    }
-
-    /**
-     * Returns the ID of the last inserted row or sequence value.
-     *
-     * @param string $sequenceName name of the sequence object (required by some DBMS)
-     *
-     * @throws InvalidCallException if the DB connection is not active
-     *
-     * @return string the row ID of the last row inserted, or the last value retrieved from the sequence object
-     *
-     * @see http://www.php.net/manual/en/function.PDO-lastInsertId.php
-     */
-    public function getLastInsertID(string $sequenceName = ''): string
-    {
-        if ($this->db->isActive()) {
-            return $this->db->getPDO()->lastInsertId(
-                $sequenceName === '' ? null : $this->db->getQuoter()->quoteTableName($sequenceName)
-            );
-        }
-
-        throw new InvalidCallException('DB Connection is not active.');
-    }
-
-    /**
-     * @return bool whether this DBMS supports [savepoint](http://en.wikipedia.org/wiki/Savepoint).
-     */
-    public function supportsSavepoint(): bool
-    {
-        return $this->db->isSavepointEnabled();
-    }
-
-    /**
-     * Creates a new savepoint.
-     *
-     * @param string $name the savepoint name
-     *
-     * @throws Exception|InvalidConfigException|Throwable
-     */
-    public function createSavepoint(string $name): void
-    {
-        $this->db->createCommand("SAVEPOINT $name")->execute();
-    }
-
-    /**
-     * Releases an existing savepoint.
-     *
-     * @param string $name the savepoint name
-     *
-     * @throws Exception|InvalidConfigException|Throwable
-     */
-    public function releaseSavepoint(string $name): void
-    {
-        $this->db->createCommand("RELEASE SAVEPOINT $name")->execute();
-    }
-
-    /**
-     * Rolls back to a previously created savepoint.
-     *
-     * @param string $name the savepoint name
-     *
-     * @throws Exception|InvalidConfigException|Throwable
-     */
-    public function rollBackSavepoint(string $name): void
-    {
-        $this->db->createCommand("ROLLBACK TO SAVEPOINT $name")->execute();
-    }
-
-    /**
-     * Sets the isolation level of the current transaction.
-     *
-     * @param string $level The transaction isolation level to use for this transaction.
-     *
-     * This can be one of {@see Transaction::READ_UNCOMMITTED}, {@see Transaction::READ_COMMITTED},
-     * {@see Transaction::REPEATABLE_READ} and {@see Transaction::SERIALIZABLE} but also a string containing DBMS
-     * specific syntax to be used after `SET TRANSACTION ISOLATION LEVEL`.
-     *
-     * @throws Exception|InvalidConfigException|Throwable
-     *
-     * {@see http://en.wikipedia.org/wiki/Isolation_%28database_systems%29#Isolation_levels}
-     */
-    public function setTransactionIsolationLevel(string $level): void
-    {
-        $this->db->createCommand("SET TRANSACTION ISOLATION LEVEL $level")->execute();
-    }
-
-    /**
-     * Executes the INSERT command, returning primary key values.
-     *
-     * @param string $table the table that new rows will be inserted into.
-     * @param array $columns the column data (name => value) to be inserted into the table.
-     *
-     * @throws Exception|InvalidCallException|InvalidConfigException|Throwable
-     *
-     * @return array|false primary key values or false if the command fails.
-     */
-    public function insert(string $table, array $columns)
-    {
-        $command = $this->db->createCommand()->insert($table, $columns);
-
-        if (!$command->execute()) {
-            return false;
-        }
-
-        $tableSchema = $this->getTableSchema($table);
-        $result = [];
-
-        foreach ($tableSchema->getPrimaryKey() as $name) {
-            if ($tableSchema->getColumn($name)->isAutoIncrement()) {
-                $result[$name] = $this->getLastInsertID($tableSchema->getSequenceName());
-                break;
-            }
-
-            $result[$name] = $columns[$name] ?? $tableSchema->getColumn($name)->getDefaultValue();
-        }
-
-        return $result;
-    }
-
-    /**
-     * Returns the actual name of a given table name.
-     *
-     * This method will strip off curly brackets from the given table name and replace the percentage character '%' with
-     * {@see ConnectionInterface::tablePrefix}.
-     *
-     * @param string $name the table name to be converted.
-     *
-     * @return string the real name of the given table name.
-     */
-    public function getRawTableName(string $name): string
-    {
-        if (strpos($name, '{{') !== false) {
-            $name = preg_replace('/{{(.*?)}}/', '\1', $name);
-
-            return str_replace('%', $this->db->getTablePrefix(), $name);
-        }
-
-        return $name;
     }
 
     /**
@@ -514,55 +341,6 @@ abstract class Schema
     }
 
     /**
-     * Returns a server version as a string comparable by {@see version_compare()}.
-     *
-     * @throws Exception
-     *
-     * @return string server version as a string.
-     */
-    public function getServerVersion(): string
-    {
-        if ($this->serverVersion === null) {
-            $this->serverVersion = $this->db->getSlavePdo()->getAttribute(PDO::ATTR_SERVER_VERSION);
-        }
-
-        return $this->serverVersion;
-    }
-
-    /**
-     * Returns the cache key for the specified table name.
-     *
-     * @param string $name the table name.
-     *
-     * @return array the cache key.
-     */
-    protected function getCacheKey(string $name): array
-    {
-        return [
-            __CLASS__,
-            $this->db->getDriver()->getDsn(),
-            $this->db->getDriver()->getUsername(),
-            $this->getRawTableName($name),
-        ];
-    }
-
-    /**
-     * Returns the cache tag name.
-     *
-     * This allows {@see refresh()} to invalidate all cached table schemas.
-     *
-     * @return string the cache tag name.
-     */
-    protected function getCacheTag(): string
-    {
-        return md5(serialize([
-            __CLASS__,
-            $this->db->getDriver()->getDsn(),
-            $this->db->getDriver()->getUsername(),
-        ]));
-    }
-
-    /**
      * Returns the metadata of the given type for the given table.
      *
      * If there's no metadata in the cache, this method will call a `'loadTable' . ucfirst($type)` named method with the
@@ -636,31 +414,6 @@ abstract class Schema
     protected function setTableMetadata(string $name, string $type, $data): void
     {
         $this->tableMetadata[$this->getRawTableName($name)][$type] = $data;
-    }
-
-    /**
-     * Changes row's array key case to lower if PDO's one is set to uppercase.
-     *
-     * @param array $row row's array or an array of row's arrays.
-     * @param bool $multiple whether multiple rows or a single row passed.
-     *
-     * @throws Exception
-     *
-     * @return array normalized row or rows.
-     */
-    protected function normalizePdoRowKeyCase(array $row, bool $multiple): array
-    {
-        if ($this->db->getSlavePdo()->getAttribute(PDO::ATTR_CASE) !== PDO::CASE_UPPER) {
-            return $row;
-        }
-
-        if ($multiple) {
-            return array_map(static function (array $row) {
-                return array_change_key_case($row, CASE_LOWER);
-            }, $row);
-        }
-
-        return array_change_key_case($row, CASE_LOWER);
     }
 
     /**

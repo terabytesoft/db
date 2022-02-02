@@ -1551,27 +1551,6 @@ trait TestQueryBuilderTrait
         $this->assertSame([':qp0' => '1', ':qp1' => '0'], $params);
     }
 
-    public function addDropChecksProviderTrait(): array
-    {
-        $tableName = 'T_constraints_1';
-        $name = 'CN_check';
-
-        return [
-            'drop' => [
-                "ALTER TABLE {{{$tableName}}} DROP CONSTRAINT [[$name]]",
-                static function (QueryBuilder $qb) use ($tableName, $name) {
-                    return $qb->dropCheck($name, $tableName);
-                },
-            ],
-            'add' => [
-                "ALTER TABLE {{{$tableName}}} ADD CONSTRAINT [[$name]] CHECK ([[C_not_null]] > 100)",
-                static function (QueryBuilder $qb) use ($tableName, $name) {
-                    return $qb->addCheck($name, $tableName, '[[C_not_null]] > 100');
-                },
-            ],
-        ];
-    }
-
     public function addDropForeignKeysProviderTrait(): array
     {
         $tableName = 'T_constraints_3';

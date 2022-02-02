@@ -6,6 +6,7 @@ namespace Yiisoft\Db\Query;
 
 use Generator;
 use JsonException;
+use Yiisoft\Db\Command\Command;
 use Yiisoft\Db\Constraint\Constraint;
 use Yiisoft\Db\Constraint\ConstraintFinderInterface;
 use Yiisoft\Db\Exception\Exception;
@@ -23,7 +24,7 @@ use Yiisoft\Db\Query\Conditions\HashCondition;
 use Yiisoft\Db\Query\Conditions\SimpleCondition;
 use Yiisoft\Db\Schema\ColumnSchemaBuilder;
 use Yiisoft\Db\Schema\QuoterInterface;
-use Yiisoft\Db\Schema\Schema;
+use Yiisoft\Db\Schema\SchemaInterface;
 use Yiisoft\Strings\NumericHelper;
 
 use function array_combine;
@@ -76,7 +77,7 @@ use function trim;
  * @property string[] $expressionBuilders Array of builders that should be merged with the pre-defined one's in
  * {@see expressionBuilders} property. This property is write-only.
  */
-abstract class QueryBuilder
+abstract class QueryBuilder implements QueryBuilderInterface
 {
     /**
      * The prefix for automatically generated query binding parameters.
@@ -129,10 +130,64 @@ abstract class QueryBuilder
     protected array $expressionBuilders = [];
     protected string $separator = ' ';
 
-    public function __construct(private QuoterInterface $quoter, private Schema $schema)
+    public function __construct(private QuoterInterface $quoter, private SchemaInterface $schema)
     {
         $this->expressionBuilders = $this->defaultExpressionBuilders();
         $this->conditionClasses = $this->defaultConditionClasses();
+    }
+
+    /**
+     * Builds a SQL statement for adding a new DB column.
+     *
+     * @param string $table the table that the new column will be added to. The table name will be properly quoted by
+     * the method.
+     * @param string $column the name of the new column. The name will be properly quoted by the method.
+     * @param string $type the column type. The {@see getColumnType()} method will be invoked to convert abstract column
+     * type (if any) into the physical one. Anything that is not recognized as abstract type will be kept in the
+     * generated SQL.
+     * For example, 'string' will be turned into 'varchar(255)', while 'string not null' will become
+     * 'varchar(255) not null'.
+     *
+     * @return string the SQL statement for adding a new column.
+     */
+    public function addColumn(string $table, string $column, string $type): string
+    {
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
+            . ' ADD ' . $this->quoter->quoteColumnName($column) . ' '
+            . $this->getColumnType($type);
+    }
+
+    /**
+     * Builds a SQL command for adding comment to column.
+     *
+     * @param string $table the table whose column is to be commented. The table name will be properly quoted by the
+     * method.
+     * @param string $column the name of the column to be commented. The column name will be properly quoted by the
+     * method.
+     * @param string $comment the text of the comment to be added. The comment will be properly quoted by the method.
+     *
+     * @return string the SQL statement for adding comment on column.
+     */
+    public function addCommentOnColumn(string $table, string $column, string $comment): string
+    {
+        return 'COMMENT ON COLUMN ' . $this->quoter->quoteTableName($table) . '.'
+            . $this->quoter->quoteColumnName($column) . ' IS '
+            . $this->quoter->quoteValue($comment);
+    }
+
+    /**
+     * Builds a SQL command for adding comment to table.
+     *
+     * @param string $table the table whose column is to be commented. The table name will be properly quoted by the
+     * method.
+     * @param string $comment the text of the comment to be added. The comment will be properly quoted by the method.
+     *
+     * @return string the SQL statement for adding comment on table.
+     */
+    public function addCommentOnTable(string $table, string $comment): string
+    {
+        return 'COMMENT ON TABLE ' . $this->quoter->quoteTableName($table)
+            . ' IS ' . $this->quoter->quoteValue($comment);
     }
 
     /**
@@ -150,413 +205,133 @@ abstract class QueryBuilder
      *
      * @return string the SQL statement for adding a default value constraint to an existing table.
      */
-    abstract public function addDefaultValue(string $name, string $table, string $column, $value): string;
+    public function addDefaultValue(string $name, string $table, string $column, $value): string
+    {
+        throw new NotSupportedException(static::class . ' does not support adding default value constraints.');
+    }
 
     /**
-     * Builds a SQL statement for enabling or disabling integrity check.
+     * Builds a SQL statement for adding a foreign key constraint to an existing table. The method will properly quote
+     * the table and column names.
      *
-     * @param string $schema the schema of the tables. Defaults to empty string, meaning the current or default schema.
-     * @param string $table the table name. Defaults to empty string, meaning that no table will be changed.
-     * @param bool $check whether to turn on or off the integrity check.
+     * @param string $name the name of the foreign key constraint.
+     * @param string $table the table that the foreign key constraint will be added to.
+     * @param array|string $columns the name of the column to that the constraint will be added on. If there are
+     * multiple columns, separate them with commas or use an array to represent them.
+     * @param string $refTable the table that the foreign key references to.
+     * @param array|string $refColumns the name of the column that the foreign key references to. If there are multiple
+     * columns, separate them with commas or use an array to represent them.
+     * @param string|null $delete the ON DELETE option. Most DBMS support these options: RESTRICT, CASCADE, NO ACTION,
+     * SET DEFAULT, SET NULL.
+     * @param string|null $update the ON UPDATE option. Most DBMS support these options: RESTRICT, CASCADE, NO ACTION,
+     * SET DEFAULT, SET NULL.
      *
-     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
+     * @psalm-param array<array-key, string>|string $columns
+     * @psalm-param array<array-key, string>|string $refColumns
      *
-     * @return string the SQL statement for checking integrity.
+     * @throws Exception|InvalidArgumentException
+     *
+     * @return string the SQL statement for adding a foreign key constraint to an existing table.
      */
-    abstract public function checkIntegrity(string $schema = '', string $table = '', bool $check = true): string;
-
-    /**
-     * Creates a SQL command for dropping a default value constraint.
-     *
-     * @param string $name the name of the default value constraint to be dropped.
-     * The name will be properly quoted by the method.
-     * @param string $table the table whose default value constraint is to be dropped.
-     * The name will be properly quoted by the method.
-     *
-     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
-     *
-     * @return string the SQL statement for dropping a default value constraint.
-     */
-    abstract public function dropDefaultValue(string $name, string $table): string;
-
-    /**
-     * Creates a SQL statement for resetting the sequence value of a table's primary key.
-     *
-     * The sequence will be reset such that the primary key of the next new row inserted will have the specified value
-     * or 1.
-     *
-     * @param string $tableName the name of the table whose primary key sequence will be reset.
-     * @param array|int|string|null $value the value for the primary key of the next new row inserted. If this is not
-     * set, the next new row's primary key will have a value 1.
-     *
-     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
-     *
-     * @return string the SQL statement for resetting sequence.
-     */
-    abstract public function resetSequence(string $tableName, array|int|string|null $value = null): string;
-
-    /**
-     * Creates an SQL statement to insert rows into a database table if they do not already exist (matching unique
-     * constraints), or update them if they do.
-     *
-     * For example,
-     *
-     * ```php
-     * $sql = $queryBuilder->upsert('pages', [
-     *     'name' => 'Front page',
-     *     'url' => 'http://example.com/', // url is unique
-     *     'visits' => 0,
-     * ], [
-     *     'visits' => new \Yiisoft\Db\Expression('visits + 1'),
-     * ], $params);
-     * ```
-     *
-     * The method will properly escape the table and column names.
-     *
-     * @param string $table the table that new rows will be inserted into/updated in.
-     * @param array|Query $insertColumns the column data (name => value) to be inserted into the table or instance
-     * of {@see Query} to perform `INSERT INTO ... SELECT` SQL statement.
-     * @param array|bool $updateColumns the column data (name => value) to be updated if they already exist.
-     * If `true` is passed, the column data will be updated to match the insert column data.
-     * If `false` is passed, no update will be performed if the column data already exists.
-     * @param array $params the binding parameters that will be generated by this method. They should be bound to the DB
-     * command later.
-     *
-     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
-     *
-     * @return string the resulting SQL.
-     */
-    abstract public function upsert(
+    public function addForeignKey(
+        string $name,
         string $table,
-        Query|array $insertColumns,
-        bool|array $updateColumns,
-        array &$params
-    ): string;
+        array|string $columns,
+        string $refTable,
+        array|string $refColumns,
+        ?string $delete = null,
+        ?string $update = null
+    ): string {
+        $sql = 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
+            . ' ADD CONSTRAINT ' . $this->quoter->quoteColumnName($name)
+            . ' FOREIGN KEY (' . $this->buildColumns($columns) . ')'
+            . ' REFERENCES ' . $this->quoter->quoteTableName($refTable)
+            . ' (' . $this->buildColumns($refColumns) . ')';
 
-    /**
-     * Contains array of default condition classes. Extend this method, if you want to change default condition classes
-     * for the query builder.
-     *
-     * @return array
-     *
-     * See {@see conditionClasses} docs for details.
-     */
-    protected function defaultConditionClasses(): array
-    {
-        return [
-            'NOT' => Conditions\NotCondition::class,
-            'AND' => Conditions\AndCondition::class,
-            'OR' => Conditions\OrCondition::class,
-            'BETWEEN' => Conditions\BetweenCondition::class,
-            'NOT BETWEEN' => Conditions\BetweenCondition::class,
-            'IN' => Conditions\InCondition::class,
-            'NOT IN' => Conditions\InCondition::class,
-            'LIKE' => Conditions\LikeCondition::class,
-            'NOT LIKE' => Conditions\LikeCondition::class,
-            'OR LIKE' => Conditions\LikeCondition::class,
-            'OR NOT LIKE' => Conditions\LikeCondition::class,
-            'EXISTS' => Conditions\ExistsCondition::class,
-            'NOT EXISTS' => Conditions\ExistsCondition::class,
-        ];
+        if ($delete !== null) {
+            $sql .= ' ON DELETE ' . $delete;
+        }
+
+        if ($update !== null) {
+            $sql .= ' ON UPDATE ' . $update;
+        }
+
+        return $sql;
     }
 
     /**
-     * Contains array of default expression builders. Extend this method and override it, if you want to change default
-     * expression builders for this query builder.
+     * Builds a SQL statement for adding a primary key constraint to an existing table.
      *
-     * @return array
+     * @param string $name the name of the primary key constraint.
+     * @param string $table the table that the primary key constraint will be added to.
+     * @param array|string $columns comma separated string or array of columns that the primary key will consist of.
      *
-     * See {@see expressionBuilders} docs for details.
+     * @psalm-param array<array-key, string>|string $columns
+     *
+     * @return string the SQL statement for adding a primary key constraint to an existing table.
      */
-    protected function defaultExpressionBuilders(): array
+    public function addPrimaryKey(string $name, string $table, array|string $columns): string
     {
-        return [
-            Query::class => QueryExpressionBuilder::class,
-            PdoValue::class => PdoValueBuilder::class,
-            Expression::class => ExpressionBuilder::class,
-            Conditions\ConjunctionCondition::class => Conditions\ConjunctionConditionBuilder::class,
-            Conditions\NotCondition::class => Conditions\NotConditionBuilder::class,
-            Conditions\AndCondition::class => Conditions\ConjunctionConditionBuilder::class,
-            Conditions\OrCondition::class => Conditions\ConjunctionConditionBuilder::class,
-            Conditions\BetweenCondition::class => Conditions\BetweenConditionBuilder::class,
-            Conditions\InCondition::class => Conditions\InConditionBuilder::class,
-            Conditions\LikeCondition::class => Conditions\LikeConditionBuilder::class,
-            Conditions\ExistsCondition::class => Conditions\ExistsConditionBuilder::class,
-            Conditions\SimpleCondition::class => Conditions\SimpleConditionBuilder::class,
-            Conditions\HashCondition::class => Conditions\HashConditionBuilder::class,
-            Conditions\BetweenColumnsCondition::class => Conditions\BetweenColumnsConditionBuilder::class,
-        ];
+        if (is_string($columns)) {
+            $columns = preg_split('/\s*,\s*/', $columns, -1, PREG_SPLIT_NO_EMPTY);
+        }
+
+        foreach ($columns as $i => $col) {
+            $columns[$i] = $this->quoter->quoteColumnName($col);
+        }
+
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table) . ' ADD CONSTRAINT '
+            . $this->quoter->quoteColumnName($name) . ' PRIMARY KEY ('
+            . implode(', ', $columns) . ')';
     }
 
     /**
-     * Setter for {@see expressionBuilders property.
+     * Creates a SQL command for adding a unique constraint to an existing table.
      *
-     * @param string[] $builders array of builders that should be merged with the pre-defined ones in property.
+     * @param string $name the name of the unique constraint. The name will be properly quoted by the method.
+     * @param string $table the table that the unique constraint will be added to. The name will be properly quoted by
+     * the method.
+     * @param array|string $columns the name of the column to that the constraint will be added on. If there are
+     * multiple columns, separate them with commas. The name will be properly quoted by the method.
      *
-     * See {@see expressionBuilders} docs for details.
+     * @psalm-param array<array-key, string>|string $columns
+     *
+     * @return string the SQL statement for adding a unique constraint to an existing table.
      */
-    public function setExpressionBuilders(array $builders): void
+    public function addUnique(string $name, string $table, $columns): string
     {
-        $this->expressionBuilders = array_merge($this->expressionBuilders, $builders);
+        if (is_string($columns)) {
+            $columns = preg_split('/\s*,\s*/', $columns, -1, PREG_SPLIT_NO_EMPTY);
+        }
+
+        foreach ($columns as $i => $col) {
+            $columns[$i] = $this->quoter->quoteColumnName($col);
+        }
+
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table) . ' ADD CONSTRAINT '
+            . $this->quoter->quoteColumnName($name) . ' UNIQUE ('
+            . implode(', ', $columns) . ')';
     }
 
     /**
-     * Setter for {@see conditionClasses} property.
+     * Builds a SQL statement for changing the definition of a column.
      *
-     * @param string[] $classes map of condition aliases to condition classes. For example:
+     * @param string $table the table whose column is to be changed. The table name will be properly quoted by the
+     * method.
+     * @param string $column the name of the column to be changed. The name will be properly quoted by the method.
+     * @param string $type the new column type. The {@see getColumnType()} method will be invoked to convert abstract
+     * column type (if any) into the physical one. Anything that is not recognized as abstract type will be kept
+     * in the generated SQL. For example, 'string' will be turned into 'varchar(255)', while 'string not null'
+     * will become 'varchar(255) not null'.
      *
-     * ```php
-     * ['LIKE' => \Yiisoft\Db\Condition\LikeCondition::class]
-     * ```
-     *
-     * See {@see conditionClasses} docs for details.
+     * @return string the SQL statement for changing the definition of a column.
      */
-    public function setConditionClasses(array $classes): void
+    public function alterColumn(string $table, string $column, string $type): string
     {
-        $this->conditionClasses = array_merge($this->conditionClasses, $classes);
-    }
-
-    /**
-     * Generates a SELECT SQL statement from a {@see Query} object.
-     *
-     * @param Query $query the {@see Query} object from which the SQL statement will be generated.
-     * @param array $params the parameters to be bound to the generated SQL statement. These parameters will be included
-     * in the result with the additional parameters generated during the query building process.
-     *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
-     *
-     * @return array the generated SQL statement (the first array element) and the corresponding parameters to be bound
-     * to the SQL statement (the second array element). The parameters returned include those provided in `$params`.
-     *
-     * @psalm-return array{0: string, 1: array}
-     */
-    public function build(Query $query, array $params = []): array
-    {
-        $query = $query->prepare($this);
-
-        $params = empty($params) ? $query->getParams() : array_merge($params, $query->getParams());
-
-        $clauses = [
-            $this->buildSelect($query->getSelect(), $params, $query->getDistinct(), $query->getSelectOption()),
-            $this->buildFrom($query->getFrom(), $params),
-            $this->buildJoin($query->getJoin(), $params),
-            $this->buildWhere($query->getWhere(), $params),
-            $this->buildGroupBy($query->getGroupBy(), $params),
-            $this->buildHaving($query->getHaving(), $params),
-        ];
-
-        $sql = implode($this->separator, array_filter($clauses));
-
-        $sql = $this->buildOrderByAndLimit($sql, $query->getOrderBy(), $query->getLimit(), $query->getOffset());
-
-        if (!empty($query->getOrderBy())) {
-            foreach ($query->getOrderBy() as $expression) {
-                if ($expression instanceof ExpressionInterface) {
-                    $this->buildExpression($expression, $params);
-                }
-            }
-        }
-
-        if (!empty($query->getGroupBy())) {
-            foreach ($query->getGroupBy() as $expression) {
-                if ($expression instanceof ExpressionInterface) {
-                    $this->buildExpression($expression, $params);
-                }
-            }
-        }
-
-        $union = $this->buildUnion($query->getUnion(), $params);
-
-        if ($union !== '') {
-            $sql = "($sql){$this->separator}$union";
-        }
-
-        $with = $this->buildWithQueries($query->getWithQueries(), $params);
-
-        if ($with !== '') {
-            $sql = "$with{$this->separator}$sql";
-        }
-
-        return [$sql, $params];
-    }
-
-    /**
-     * Builds given $expression.
-     *
-     * @param ExpressionInterface $expression the expression to be built
-     * @param array $params the parameters to be bound to the generated SQL statement. These parameters will be included
-     * in the result with the additional parameters generated during the expression building process.
-     *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException when $expression building
-     * is not supported by this QueryBuilder.
-     *
-     * @return string the SQL statement that will not be neither quoted nor encoded before passing to DBMS.
-     *
-     * @see ExpressionInterface
-     * @see ExpressionBuilderInterface
-     * @see expressionBuilders
-     */
-    public function buildExpression(ExpressionInterface $expression, array &$params = []): string
-    {
-        $builder = $this->getExpressionBuilder($expression);
-        return (string) $builder->build($expression, $params);
-    }
-
-    /**
-     * Gets object of {@see ExpressionBuilderInterface} that is suitable for $expression.
-     *
-     * Uses {@see expressionBuilders} array to find a suitable builder class.
-     *
-     * @param ExpressionInterface $expression
-     *
-     * @throws InvalidArgumentException when $expression building is not supported by this QueryBuilder.
-     *
-     * @return ExpressionBuilderInterface|QueryBuilder|string
-     *
-     * @see expressionBuilders
-     */
-    public function getExpressionBuilder(ExpressionInterface $expression): string|ExpressionBuilderInterface|static
-    {
-        $className = get_class($expression);
-
-        if (!isset($this->expressionBuilders[$className])) {
-            foreach (array_reverse($this->expressionBuilders) as $expressionClass => $builderClass) {
-                if (is_subclass_of($expression, $expressionClass)) {
-                    $this->expressionBuilders[$className] = $builderClass;
-                    break;
-                }
-            }
-
-            if (!isset($this->expressionBuilders[$className])) {
-                throw new InvalidArgumentException(
-                    'Expression of class ' . $className . ' can not be built in ' . static::class
-                );
-            }
-        }
-
-        if ($this->expressionBuilders[$className] === __CLASS__) {
-            return $this;
-        }
-
-        if (!is_object($this->expressionBuilders[$className])) {
-            $this->expressionBuilders[$className] = new $this->expressionBuilders[$className]($this);
-        }
-
-        return $this->expressionBuilders[$className];
-    }
-
-    /**
-     * Creates an INSERT SQL statement.
-     *
-     * For example,
-     *
-     * ```php
-     * $sql = $queryBuilder->insert('user', [
-     *     'name' => 'Sam',
-     *     'age' => 30,
-     * ], $params);
-     * ```
-     *
-     * The method will properly escape the table and column names.
-     *
-     * @param string $table the table that new rows will be inserted into.
-     * @param array|Query $columns the column data (name => value) to be inserted into the table or instance of
-     * {@see Query} to perform INSERT INTO ... SELECT SQL statement. Passing of {@see Query}.
-     * @param array $params the binding parameters that will be generated by this method. They should be bound to the
-     * DB command later.
-     *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
-     *
-     * @return string the INSERT SQL.
-     */
-    public function insert(string $table, Query|array $columns, array &$params = []): string
-    {
-        [$names, $placeholders, $values, $params] = $this->prepareInsertValues($table, $columns, $params);
-
-        return 'INSERT INTO ' . $this->quoter->quoteTableName($table)
-            . (!empty($names) ? ' (' . implode(', ', $names) . ')' : '')
-            . (!empty($placeholders) ? ' VALUES (' . implode(', ', $placeholders) . ')' : $values);
-    }
-
-    /**
-     * Prepares a `VALUES` part for an `INSERT` SQL statement.
-     *
-     * @param string $table the table that new rows will be inserted into.
-     * @param array|Query $columns the column data (name => value) to be inserted into the table or instance of
-     * {@see Query} to perform INSERT INTO ... SELECT SQL statement.
-     * @param array $params the binding parameters that will be generated by this method.
-     * They should be bound to the DB command later.
-     *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
-     *
-     * @return array array of column names, placeholders, values and params.
-     */
-    protected function prepareInsertValues(string $table, Query|array $columns, array $params = []): array
-    {
-        $tableSchema = $this->schema->getTableSchema($table);
-        $columnSchemas = $tableSchema !== null ? $tableSchema->getColumns() : [];
-        $names = [];
-        $placeholders = [];
-        $values = ' DEFAULT VALUES';
-
-        if ($columns instanceof Query) {
-            [$names, $values, $params] = $this->prepareInsertSelectSubQuery($columns, $params);
-        } else {
-            foreach ($columns as $name => $value) {
-                $names[] = $this->quoter->quoteColumnName($name);
-                $value = isset($columnSchemas[$name]) ? $columnSchemas[$name]->dbTypecast($value) : $value;
-
-                if ($value instanceof ExpressionInterface) {
-                    $placeholders[] = $this->buildExpression($value, $params);
-                } elseif ($value instanceof Query) {
-                    [$sql, $params] = $this->build($value, $params);
-                    $placeholders[] = "($sql)";
-                } else {
-                    $placeholders[] = $this->bindParam($value, $params);
-                }
-            }
-        }
-
-        return [$names, $placeholders, $values, $params];
-    }
-
-    /**
-     * Prepare select-subquery and field names for INSERT INTO ... SELECT SQL statement.
-     *
-     * @param Query $columns Object, which represents select query.
-     * @param array $params the parameters to be bound to the generated SQL statement. These parameters will be included
-     * in the result with the additional parameters generated during the query building process.
-     *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
-     *
-     * @return array array of column names, values and params.
-     */
-    protected function prepareInsertSelectSubQuery(Query $columns, array $params = []): array
-    {
-        if (
-            !is_array($columns->getSelect())
-            || empty($columns->getSelect())
-            || in_array('*', $columns->getSelect(), true)
-        ) {
-            throw new InvalidArgumentException('Expected select query object with enumerated (named) parameters');
-        }
-
-        [$values, $params] = $this->build($columns, $params);
-
-        $names = [];
-        $values = ' ' . $values;
-
-        foreach ($columns->getSelect() as $title => $field) {
-            if (is_string($title)) {
-                $names[] = $this->quoter->quoteColumnName($title);
-            } elseif (preg_match('/^(.*?)(?i:\s+as\s+|\s+)([\w\-_.]+)$/', $field, $matches)) {
-                $names[] = $this->quoter->quoteColumnName($matches[2]);
-            } else {
-                $names[] = $this->quoter->quoteColumnName($field);
-            }
-        }
-
-        return [$names, $values, $params];
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table) . ' CHANGE '
+            . $this->quoter->quoteColumnName($column) . ' '
+            . $this->quoter->quoteColumnName($column) . ' '
+            . $this->getColumnType($type);
     }
 
     /**
@@ -635,215 +410,583 @@ abstract class QueryBuilder
     }
 
     /**
-     * @param string $table
-     * @param array|Query $insertColumns
-     * @param bool|array|Query $updateColumns
-     * @param Constraint[] $constraints this parameter receives a matched constraint list.
-     * The constraints will be unique by their column names.
+     * Helper method to add $value to $params array using {@see PARAM_PREFIX}.
      *
-     * @return array
-     *@throws Exception|JsonException
+     * @param mixed $value
+     * @param array $params passed by reference.
      *
+     * @return string the placeholder name in $params array.
      */
-    protected function prepareUpsertColumns(
-        string $table,
-        Query|array $insertColumns,
-        Query|bool|array $updateColumns,
-        array &$constraints = []
-    ): array {
-        if ($insertColumns instanceof Query) {
-            [$insertNames] = $this->prepareInsertSelectSubQuery($insertColumns);
-        } else {
-            $insertNames = array_map([$this->quoter, 'quoteColumnName'], array_keys($insertColumns));
-        }
+    public function bindParam(mixed $value, array &$params = []): string
+    {
+        $phName = self::PARAM_PREFIX . count($params);
 
-        $uniqueNames = $this->getTableUniqueColumnNames($table, $insertNames, $constraints);
-        $uniqueNames = array_map([$this->quoter, 'quoteColumnName'], $uniqueNames);
+        /** @psalm-var mixed */
+        $params[$phName] = $value;
 
-        if ($updateColumns !== true) {
-            return [$uniqueNames, $insertNames, null];
-        }
-
-        return [$uniqueNames, $insertNames, array_diff($insertNames, $uniqueNames)];
+        return $phName;
     }
 
     /**
-     * Returns all column names belonging to constraints enforcing uniqueness (`PRIMARY KEY`, `UNIQUE INDEX`, etc.)
-     * for the named table removing constraints which did not cover the specified column list.
+     * Generates a SELECT SQL statement from a {@see Query} object.
      *
-     * The column list will be unique by column names.
+     * @param Query $query the {@see Query} object from which the SQL statement will be generated.
+     * @param array $params the parameters to be bound to the generated SQL statement. These parameters will be included
+     * in the result with the additional parameters generated during the query building process.
      *
-     * @param string $name table name. The table name may contain schema name if any. Do not quote the table name.
-     * @param string[] $columns source column list.
-     * @param Constraint[] $constraints this parameter optionally receives a matched constraint list. The constraints
-     * will be unique by their column names.
+     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
      *
-     * @throws JsonException
+     * @return array the generated SQL statement (the first array element) and the corresponding parameters to be bound
+     * to the SQL statement (the second array element). The parameters returned include those provided in `$params`.
      *
-     * @return array column list.
+     * @psalm-return array{0: string, 1: array}
      */
-    private function getTableUniqueColumnNames(string $name, array $columns, array &$constraints = []): array
+    public function build(Query $query, array $params = []): array
     {
-        if (!$this->schema instanceof ConstraintFinderInterface) {
-            return [];
-        }
+        $query = $query->prepare($this);
 
-        $constraints = [];
-        $primaryKey = $this->schema->getTablePrimaryKey($name);
+        $params = empty($params) ? $query->getParams() : array_merge($params, $query->getParams());
 
-        if ($primaryKey !== null) {
-            $constraints[] = $primaryKey;
-        }
+        $clauses = [
+            $this->buildSelect($query->getSelect(), $params, $query->getDistinct(), $query->getSelectOption()),
+            $this->buildFrom($query->getFrom(), $params),
+            $this->buildJoin($query->getJoin(), $params),
+            $this->buildWhere($query->getWhere(), $params),
+            $this->buildGroupBy($query->getGroupBy(), $params),
+            $this->buildHaving($query->getHaving(), $params),
+        ];
 
-        foreach ($this->schema->getTableIndexes($name) as $constraint) {
-            if ($constraint->isUnique()) {
-                $constraints[] = $constraint;
-            }
-        }
+        $sql = implode($this->separator, array_filter($clauses));
 
-        $constraints = array_merge($constraints, $this->schema->getTableUniques($name));
+        $sql = $this->buildOrderByAndLimit($sql, $query->getOrderBy(), $query->getLimit(), $query->getOffset());
 
-        /** Remove duplicates */
-        $constraints = array_combine(
-            array_map(
-                static function ($constraint) {
-                    $columns = $constraint->getColumnNames();
-                    sort($columns, SORT_STRING);
-
-                    return json_encode($columns, JSON_THROW_ON_ERROR);
-                },
-                $constraints
-            ),
-            $constraints
-        );
-
-        $columnNames = [];
-        $quoter = $this->quoter;
-
-        /** Remove all constraints which do not cover the specified column list */
-        $constraints = array_values(
-            array_filter(
-                $constraints,
-                static function ($constraint) use ($quoter, $columns, &$columnNames) {
-                    /** @psalm-suppress UndefinedClass, UndefinedMethod */
-                    $constraintColumnNames = array_map([$quoter, 'quoteColumnName'], $constraint->getColumnNames());
-                    $result = !array_diff($constraintColumnNames, $columns);
-
-                    if ($result) {
-                        $columnNames = array_merge($columnNames, $constraintColumnNames);
-                    }
-
-                    return $result;
+        if (!empty($query->getOrderBy())) {
+            foreach ($query->getOrderBy() as $expression) {
+                if ($expression instanceof ExpressionInterface) {
+                    $this->buildExpression($expression, $params);
                 }
-            )
-        );
-
-        return array_unique($columnNames);
-    }
-
-    /**
-     * Creates an UPDATE SQL statement.
-     *
-     * For example,
-     *
-     * ```php
-     * $params = [];
-     * $sql = $queryBuilder->update('user', ['status' => 1], 'age > 30', $params);
-     * ```
-     *
-     * The method will properly escape the table and column names.
-     *
-     * @param string $table the table to be updated.
-     * @param array $columns the column data (name => value) to be updated.
-     * @param array|string $condition the condition that will be put in the WHERE part. Please refer to
-     * {@see Query::where()} on how to specify condition.
-     * @param array $params the binding parameters that will be modified by this method so that they can be bound to the
-     * DB command later.
-     *
-     * @psalm-param array<string, ExpressionInterface|string> $columns
-     *
-     * @throws Exception|InvalidArgumentException
-     *
-     * @return string the UPDATE SQL.
-     */
-    public function update(string $table, array $columns, array|string $condition, array &$params = []): string
-    {
-        /**
-         * @psalm-var array $lines
-         * @psalm-var array $params
-         */
-        [$lines, $params] = $this->prepareUpdateSets($table, $columns, $params);
-        $sql = 'UPDATE ' . $this->quoter->quoteTableName($table) . ' SET ' . implode(', ', $lines);
-        $where = $this->buildWhere($condition, $params);
-
-        return ($where === '') ? $sql : ($sql . ' ' . $where);
-    }
-
-    /**
-     * Prepares a `SET` parts for an `UPDATE` SQL statement.
-     *
-     * @param string $table the table to be updated.
-     * @param array $columns the column data (name => value) to be updated.
-     * @param array $params the binding parameters that will be modified by this method so that they can be bound to the
-     * DB command later.
-     *
-     * @psalm-param array<string, ExpressionInterface|string> $columns
-     *
-     * @throws Exception|InvalidArgumentException
-     *
-     * @return array `SET` parts for an `UPDATE` SQL statement (the first array element) and params (the second array
-     * element).
-     */
-    protected function prepareUpdateSets(string $table, array $columns, array $params = []): array
-    {
-        $tableSchema = $this->schema->getTableSchema($table);
-
-        $columnSchemas = $tableSchema !== null ? $tableSchema->getColumns() : [];
-
-        $sets = [];
-
-        foreach ($columns as $name => $value) {
-            /** @psalm-var mixed $value */
-            $value = isset($columnSchemas[$name]) ? $columnSchemas[$name]->dbTypecast($value) : $value;
-            if ($value instanceof ExpressionInterface) {
-                $placeholder = $this->buildExpression($value, $params);
-            } else {
-                $placeholder = $this->bindParam($value, $params);
             }
-
-            $sets[] = $this->quoter->quoteColumnName($name) . '=' . $placeholder;
         }
 
-        return [$sets, $params];
+        if (!empty($query->getGroupBy())) {
+            foreach ($query->getGroupBy() as $expression) {
+                if ($expression instanceof ExpressionInterface) {
+                    $this->buildExpression($expression, $params);
+                }
+            }
+        }
+
+        $union = $this->buildUnion($query->getUnion(), $params);
+
+        if ($union !== '') {
+            $sql = "($sql){$this->separator}$union";
+        }
+
+        $with = $this->buildWithQueries($query->getWithQueries(), $params);
+
+        if ($with !== '') {
+            $sql = "$with{$this->separator}$sql";
+        }
+
+        return [$sql, $params];
     }
 
     /**
-     * Creates a DELETE SQL statement.
+     * Processes columns and properly quotes them if necessary.
      *
-     * For example,
+     * It will join all columns into a string with comma as separators.
      *
-     * ```php
-     * $sql = $queryBuilder->delete('user', 'status = 0');
-     * ```
+     * @param array|string $columns the columns to be processed.
      *
-     * The method will properly escape the table and column names.
-     *
-     * @param string $table the table where the data will be deleted from.
-     * @param array|string $condition the condition that will be put in the WHERE part. Please refer to
-     * {@see Query::where()} on how to specify condition.
-     * @param array $params the binding parameters that will be modified by this method so that they can be bound to the
-     * DB command later.
+     * @psalm-param array<array-key, ExpressionInterface|string>|string $columns
      *
      * @throws Exception|InvalidArgumentException
      *
-     * @return string the DELETE SQL.
+     * @return string the processing result.
      */
-    public function delete(string $table, array|string $condition, array &$params): string
+    public function buildColumns(array|string $columns): string
     {
-        $sql = 'DELETE FROM ' . $this->quoter->quoteTableName($table);
-        $where = $this->buildWhere($condition, $params);
+        if (!is_array($columns)) {
+            if (str_contains($columns, '(')) {
+                return $columns;
+            }
 
-        return ($where === '') ? $sql : ($sql . ' ' . $where);
+            $rawColumns = $columns;
+            $columns = preg_split('/\s*,\s*/', $columns, -1, PREG_SPLIT_NO_EMPTY);
+
+            if ($columns === false) {
+                throw new InvalidArgumentException("$rawColumns is not valid columns.");
+            }
+        }
+        foreach ($columns as $i => $column) {
+            if ($column instanceof ExpressionInterface) {
+                $columns[$i] = $this->buildExpression($column);
+            } elseif (!str_contains($column, '(')) {
+                $columns[$i] = $this->quoter->quoteColumnName($column);
+            }
+        }
+
+        return implode(', ', $columns);
+    }
+
+    /**
+     * Parses the condition specification and generates the corresponding SQL expression.
+     *
+     * @param array|string|ExpressionInterface|null $condition the condition specification.
+     * Please refer to {@see Query::where()} on how to specify a condition.
+     * @param array $params the binding parameters to be populated.
+     *
+     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
+     *
+     * @return string the generated SQL expression.
+     */
+    public function buildCondition(array|string|ExpressionInterface|null $condition, array &$params = []): string
+    {
+        if (is_array($condition)) {
+            if (empty($condition)) {
+                return '';
+            }
+
+            $condition = $this->createConditionFromArray($condition);
+        }
+
+        if ($condition instanceof ExpressionInterface) {
+            return $this->buildExpression($condition, $params);
+        }
+
+        return $condition ?? '';
+    }
+
+    /**
+     * Builds given $expression.
+     *
+     * @param ExpressionInterface $expression the expression to be built
+     * @param array $params the parameters to be bound to the generated SQL statement. These parameters will be included
+     * in the result with the additional parameters generated during the expression building process.
+     *
+     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException when $expression building
+     * is not supported by this QueryBuilder.
+     *
+     * @return string the SQL statement that will not be neither quoted nor encoded before passing to DBMS.
+     *
+     * @see ExpressionInterface
+     * @see ExpressionBuilderInterface
+     * @see expressionBuilders
+     */
+    public function buildExpression(ExpressionInterface $expression, array &$params = []): string
+    {
+        $builder = $this->getExpressionBuilder($expression);
+        return (string) $builder->build($expression, $params);
+    }
+
+    /**
+     * @param array|null $tables
+     * @param array $params the binding parameters to be populated.
+     *
+     * @psalm-param array<array-key, array|Query|string> $tables
+     *
+     * @throws Exception|InvalidConfigException|NotSupportedException
+     *
+     * @return string the FROM clause built from {@see Query::$from}.
+     */
+    public function buildFrom(?array $tables, array &$params): string
+    {
+        if (empty($tables)) {
+            return '';
+        }
+
+        $tables = $this->quoteTableNames($tables, $params);
+
+        return 'FROM ' . implode(', ', $tables);
+    }
+
+    /**
+     * @param array $columns
+     * @psalm-param array<string, Expression|string> $columns
+     *
+     * @param array $params the binding parameters to be populated
+     *
+     * @throws Exception|InvalidArgumentException
+     *
+     * @return string the GROUP BY clause
+     */
+    public function buildGroupBy(array $columns, array &$params = []): string
+    {
+        if (empty($columns)) {
+            return '';
+        }
+
+        foreach ($columns as $i => $column) {
+            if ($column instanceof Expression) {
+                $columns[$i] = $this->buildExpression($column);
+                $params = array_merge($params, $column->getParams());
+            } elseif (strpos($column, '(') === false) {
+                $columns[$i] = $this->quoter->quoteColumnName($column);
+            }
+        }
+
+        return 'GROUP BY ' . implode(', ', $columns);
+    }
+
+    /**
+     * @param array|string|null $condition
+     * @param array $params the binding parameters to be populated.
+     *
+     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
+     *
+     * @return string the HAVING clause built from {@see Query::$having}.
+     */
+    public function buildHaving(array|string|null $condition, array &$params = []): string
+    {
+        $having = $this->buildCondition($condition, $params);
+
+        return ($having === '') ? '' : ('HAVING ' . $having);
+    }
+
+
+    /**
+     * @param array $joins
+     * @param array $params the binding parameters to be populated.
+     *
+     * @psalm-param array<
+     *   array-key,
+     *   array{
+     *     0?:string,
+     *     1?:array<array-key, Query|string>|string,
+     *     2?:array|ExpressionInterface|string|null
+     *   }|null
+     * > $joins
+     *
+     * @throws Exception if the $joins parameter is not in proper format.
+     *
+     * @return string the JOIN clause built from {@see Query::$join}.
+     */
+    public function buildJoin(array $joins, array &$params): string
+    {
+        if (empty($joins)) {
+            return '';
+        }
+
+        foreach ($joins as $i => $join) {
+            if (!is_array($join) || !isset($join[0], $join[1])) {
+                throw new Exception(
+                    'A join clause must be specified as an array of join type, join table, and optionally join '
+                    . 'condition.'
+                );
+            }
+
+            /* 0:join type, 1:join table, 2:on-condition (optional) */
+            [$joinType, $table] = $join;
+
+            $tables = $this->quoteTableNames((array) $table, $params);
+
+            /** @var string $table */
+            $table = reset($tables);
+            $joins[$i] = "$joinType $table";
+
+            if (isset($join[2])) {
+                $condition = $this->buildCondition($join[2], $params);
+                if ($condition !== '') {
+                    $joins[$i] .= ' ON ' . $condition;
+                }
+            }
+        }
+
+        /** @psalm-var array<string> $joins */
+        return implode($this->separator, $joins);
+    }
+
+    /**
+     * @param int|Expression|null $limit
+     * @param int|Expression|null $offset
+     *
+     * @return string the LIMIT and OFFSET clauses.
+     */
+    public function buildLimit(Expression|int|null $limit, Expression|int|null $offset): string
+    {
+        $sql = '';
+
+        if ($this->hasLimit($limit)) {
+            $sql = 'LIMIT ' . (string) $limit;
+        }
+
+        if ($this->hasOffset($offset)) {
+            $sql .= ' OFFSET ' . (string) $offset;
+        }
+
+        return ltrim($sql);
+    }
+
+    /**
+     * @param array $columns
+     * @param array $params the binding parameters to be populated
+     *
+     * @psalm-param array<string, Expression|int|string> $columns
+     *
+     * @throws Exception|InvalidArgumentException
+     *
+     * @return string the ORDER BY clause built from {@see Query::$orderBy}.
+     */
+    public function buildOrderBy(array $columns, array &$params = []): string
+    {
+        if (empty($columns)) {
+            return '';
+        }
+
+        $orders = [];
+
+        foreach ($columns as $name => $direction) {
+            if ($direction instanceof Expression) {
+                $orders[] = $this->buildExpression($direction);
+                $params = array_merge($params, $direction->getParams());
+            } else {
+                $orders[] = $this->quoter->quoteColumnName($name) . ($direction === SORT_DESC ? ' DESC' : '');
+            }
+        }
+
+        return 'ORDER BY ' . implode(', ', $orders);
+    }
+
+    /**
+     * Builds the ORDER BY and LIMIT/OFFSET clauses and appends them to the given SQL.
+     *
+     * @param string $sql the existing SQL (without ORDER BY/LIMIT/OFFSET).
+     * @param array $orderBy the order by columns. See {@see Query::orderBy} for more details on how to specify this
+     * parameter.
+     * @param int|Expression|null $limit the limit number. See {@see Query::limit} for more details.
+     * @param int|Expression|null $offset the offset number. See {@see Query::offset} for more details.
+     * @param array $params the binding parameters to be populated.
+     *
+     * @psalm-param array<string, Expression|int|string> $orderBy
+     *
+     * @throws Exception|InvalidArgumentException
+     *
+     * @return string the SQL completed with ORDER BY/LIMIT/OFFSET (if any).
+     */
+    public function buildOrderByAndLimit(
+        string $sql,
+        array $orderBy,
+        Expression|int|null $limit,
+        Expression|int|null $offset,
+        array &$params = []
+    ): string {
+        $orderBy = $this->buildOrderBy($orderBy, $params);
+        if ($orderBy !== '') {
+            $sql .= $this->separator . $orderBy;
+        }
+        $limit = $this->buildLimit($limit, $offset);
+        if ($limit !== '') {
+            $sql .= $this->separator . $limit;
+        }
+
+        return $sql;
+    }
+
+    /**
+     * @param array $columns
+     * @param array $params the binding parameters to be populated.
+     * @param bool|null $distinct
+     * @param string|null $selectOption
+     *
+     * @psalm-param array<array-key, ExpressionInterface|Query|string> $columns
+     *
+     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
+     *
+     * @return string the SELECT clause built from {@see Query::$select}.
+     */
+    public function buildSelect(
+        array $columns,
+        array &$params,
+        ?bool $distinct = false,
+        string $selectOption = null
+    ): string {
+        $select = $distinct ? 'SELECT DISTINCT' : 'SELECT';
+
+        if ($selectOption !== null) {
+            $select .= ' ' . $selectOption;
+        }
+
+        if (empty($columns)) {
+            return $select . ' *';
+        }
+
+        foreach ($columns as $i => $column) {
+            if ($column instanceof ExpressionInterface) {
+                if (is_int($i)) {
+                    $columns[$i] = $this->buildExpression($column, $params);
+                } else {
+                    $columns[$i] = $this->buildExpression($column, $params) . ' AS '
+                        . $this->quoter->quoteColumnName($i);
+                }
+            } elseif ($column instanceof Query) {
+                [$sql, $params] = $this->build($column, $params);
+                $columns[$i] = "($sql) AS " . $this->quoter->quoteColumnName((string) $i);
+            } elseif (is_string($i) && $i !== $column) {
+                if (!str_contains($column, '(')) {
+                    $column = $this->quoter->quoteColumnName($column);
+                }
+                $columns[$i] = "$column AS " . $this->quoter->quoteColumnName($i);
+            } elseif (!str_contains($column, '(')) {
+                if (preg_match('/^(.*?)(?i:\s+as\s+|\s+)([\w\-_.]+)$/', $column, $matches)) {
+                    $columns[$i] = $this->quoter->quoteColumnName(
+                        $matches[1]
+                    ) . ' AS ' . $this->quoter->quoteColumnName($matches[2]);
+                } else {
+                    $columns[$i] = $this->quoter->quoteColumnName($column);
+                }
+            }
+        }
+
+        return $select . ' ' . implode(', ', $columns);
+    }
+
+    /**
+     * @param array $unions
+     * @param array $params the binding parameters to be populated
+     *
+     * @psalm-param array<array{query:Query|string, all:bool}> $unions
+     *
+     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
+     *
+     * @return string the UNION clause built from {@see Query::$union}.
+     */
+    public function buildUnion(array $unions, array &$params): string
+    {
+        if (empty($unions)) {
+            return '';
+        }
+
+        $result = '';
+
+        foreach ($unions as $i => $union) {
+            $query = $union['query'];
+            if ($query instanceof Query) {
+                [$unions[$i]['query'], $params] = $this->build($query, $params);
+            }
+
+            $result .= 'UNION ' . ($union['all'] ? 'ALL ' : '') . '( ' . $unions[$i]['query'] . ' ) ';
+        }
+
+        return trim($result);
+    }
+
+    /**
+     * @param array|string|ConditionInterface|ExpressionInterface|null $condition
+     * @param array $params the binding parameters to be populated.
+     *
+     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
+     *
+     * @return string the WHERE clause built from {@see Query::$where}.
+     */
+    public function buildWhere(
+        array|string|ConditionInterface|ExpressionInterface|null $condition,
+        array &$params = []
+    ): string {
+        $where = $this->buildCondition($condition, $params);
+        return ($where === '') ? '' : ('WHERE ' . $where);
+    }
+
+    /**
+     * @param array $withs
+     * @param array $params
+     *
+     * @psalm-param array<array-key, array{query:string|Query, alias:string, recursive:bool}> $withs
+     *
+     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
+     *
+     * @return string
+     */
+    public function buildWithQueries(array $withs, array &$params): string
+    {
+        if (empty($withs)) {
+            return '';
+        }
+
+        $recursive = false;
+        $result = [];
+
+        foreach ($withs as $with) {
+            if ($with['recursive']) {
+                $recursive = true;
+            }
+
+            $query = $with['query'];
+            if ($query instanceof Query) {
+                [$with['query'], $params] = $this->build($query, $params);
+            }
+
+            $result[] = $with['alias'] . ' AS (' . $with['query'] . ')';
+        }
+
+        return 'WITH ' . ($recursive ? 'RECURSIVE ' : '') . implode(', ', $result);
+    }
+
+    /**
+     * Builds a SQL statement for enabling or disabling integrity check.
+     *
+     * @param string $schema the schema of the tables. Defaults to empty string, meaning the current or default schema.
+     * @param string $table the table name. Defaults to empty string, meaning that no table will be changed.
+     * @param bool $check whether to turn on or off the integrity check.
+     *
+     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
+     *
+     * @return string the SQL statement for checking integrity.
+     */
+    public function checkIntegrity(string $schema = '', string $table = '', bool $check = true): string
+    {
+        throw new NotSupportedException(static::class . ' does not support enabling/disabling integrity check.');
+    }
+
+    /**
+     * Transforms $condition defined in array format (as described in {@see Query::where()} to instance of
+     *
+     * @param array $condition.
+     *
+     * @throws InvalidArgumentException
+     *
+     * @return ConditionInterface
+     *
+     * {@see ConditionInterface|ConditionInterface} according to {@see conditionClasses} map.
+     */
+    public function createConditionFromArray(array $condition): ConditionInterface
+    {
+        /** operator format: operator, operand 1, operand 2, ... */
+        if (isset($condition[0])) {
+            $operator = strtoupper((string) array_shift($condition));
+
+            $className = $this->conditionClasses[$operator] ?? SimpleCondition::class;
+
+            /** @var ConditionInterface $className */
+            return $className::fromArrayDefinition($operator, $condition);
+        }
+
+        /** hash format: 'column1' => 'value1', 'column2' => 'value2', ... */
+        return new HashCondition($condition);
+    }
+
+    /**
+     * Builds a SQL statement for creating a new index.
+     *
+     * @param string $name the name of the index. The name will be properly quoted by the method.
+     * @param string $table the table that the new index will be created for. The table name will be properly quoted by
+     * the method.
+     * @param array|string $columns the column(s) that should be included in the index. If there are multiple columns,
+     * separate them with commas or use an array to represent them. Each column name will be properly quoted by the
+     * method, unless a parenthesis is found in the name.
+     * @param bool $unique whether to add UNIQUE constraint on the created index.
+     *
+     * @psalm-param array<array-key, ExpressionInterface|string>|string $columns
+     *
+     * @throws Exception|InvalidArgumentException
+     *
+     * @return string the SQL statement for creating a new index.
+     */
+    public function createIndex(string $name, string $table, array|string $columns, bool $unique = false): string
+    {
+        return ($unique ? 'CREATE UNIQUE INDEX ' : 'CREATE INDEX ')
+            . $this->quoter->quoteTableName($name) . ' ON '
+            . $this->quoter->quoteTableName($table)
+            . ' (' . $this->buildColumns($columns) . ')';
     }
 
     /**
@@ -894,102 +1037,60 @@ abstract class QueryBuilder
     }
 
     /**
-     * Builds a SQL statement for renaming a DB table.
+     * Creates a SQL View.
      *
-     * @param string $oldName the table to be renamed. The name will be properly quoted by the method.
-     * @param string $newName the new table name. The name will be properly quoted by the method.
+     * @param string $viewName the name of the view to be created.
+     * @param Query|string $subQuery the select statement which defines the view.
      *
-     * @return string the SQL statement for renaming a DB table.
+     * This can be either a string or a {@see Query} object.
+     *
+     * @throws Exception|InvalidConfigException|NotSupportedException
+     *
+     * @return string the `CREATE VIEW` SQL statement.
      */
-    public function renameTable(string $oldName, string $newName): string
+    public function createView(string $viewName, $subQuery): string
     {
-        return 'RENAME TABLE ' . $this->quoter->quoteTableName($oldName) .
-            ' TO ' . $this->quoter->quoteTableName($newName);
-    }
+        if ($subQuery instanceof Query) {
+            /** @psalm-var array<array-key, int|string> $params */
+            [$rawQuery, $params] = $this->build($subQuery);
 
-    /**
-     * Builds a SQL statement for dropping a DB table.
-     *
-     * @param string $table the table to be dropped. The name will be properly quoted by the method.
-     *
-     * @return string the SQL statement for dropping a DB table.
-     */
-    public function dropTable(string $table): string
-    {
-        return 'DROP TABLE ' . $this->quoter->quoteTableName($table);
-    }
+            foreach ($params as $key => $value) {
+                $params[$key] = $this->quoter->quoteValue($value);
+            }
 
-    /**
-     * Builds a SQL statement for adding a primary key constraint to an existing table.
-     *
-     * @param string $name the name of the primary key constraint.
-     * @param string $table the table that the primary key constraint will be added to.
-     * @param array|string $columns comma separated string or array of columns that the primary key will consist of.
-     *
-     * @psalm-param array<array-key, string>|string $columns
-     *
-     * @return string the SQL statement for adding a primary key constraint to an existing table.
-     */
-    public function addPrimaryKey(string $name, string $table, array|string $columns): string
-    {
-        if (is_string($columns)) {
-            $columns = preg_split('/\s*,\s*/', $columns, -1, PREG_SPLIT_NO_EMPTY);
+            $subQuery = strtr($rawQuery, $params);
         }
 
-        foreach ($columns as $i => $col) {
-            $columns[$i] = $this->quoter->quoteColumnName($col);
-        }
-
-        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table) . ' ADD CONSTRAINT '
-            . $this->quoter->quoteColumnName($name) . ' PRIMARY KEY ('
-            . implode(', ', $columns) . ')';
+        return 'CREATE VIEW ' . $this->quoter->quoteTableName($viewName) . ' AS ' . $subQuery;
     }
 
     /**
-     * Builds a SQL statement for removing a primary key constraint to an existing table.
+     * Creates a DELETE SQL statement.
      *
-     * @param string $name the name of the primary key constraint to be removed.
-     * @param string $table the table that the primary key constraint will be removed from.
+     * For example,
      *
-     * @return string the SQL statement for removing a primary key constraint from an existing table.
+     * ```php
+     * $sql = $queryBuilder->delete('user', 'status = 0');
+     * ```
+     *
+     * The method will properly escape the table and column names.
+     *
+     * @param string $table the table where the data will be deleted from.
+     * @param array|string $condition the condition that will be put in the WHERE part. Please refer to
+     * {@see Query::where()} on how to specify condition.
+     * @param array $params the binding parameters that will be modified by this method so that they can be bound to the
+     * DB command later.
+     *
+     * @throws Exception|InvalidArgumentException
+     *
+     * @return string the DELETE SQL.
      */
-    public function dropPrimaryKey(string $name, string $table): string
+    public function delete(string $table, array|string $condition, array &$params): string
     {
-        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
-            . ' DROP CONSTRAINT ' . $this->quoter->quoteColumnName($name);
-    }
+        $sql = 'DELETE FROM ' . $this->quoter->quoteTableName($table);
+        $where = $this->buildWhere($condition, $params);
 
-    /**
-     * Builds a SQL statement for truncating a DB table.
-     *
-     * @param string $table the table to be truncated. The name will be properly quoted by the method.
-     *
-     * @return string the SQL statement for truncating a DB table.
-     */
-    public function truncateTable(string $table): string
-    {
-        return 'TRUNCATE TABLE ' . $this->quoter->quoteTableName($table);
-    }
-
-    /**
-     * Builds a SQL statement for adding a new DB column.
-     *
-     * @param string $table the table that the new column will be added to. The table name will be properly quoted by
-     * the method.
-     * @param string $column the name of the new column. The name will be properly quoted by the method.
-     * @param string $type the column type. The {@see getColumnType()} method will be invoked to convert abstract column
-     * type (if any) into the physical one. Anything that is not recognized as abstract type will be kept in the
-     * generated SQL.
-     * For example, 'string' will be turned into 'varchar(255)', while 'string not null' will become
-     * 'varchar(255) not null'.
-     *
-     * @return string the SQL statement for adding a new column.
-     */
-    public function addColumn(string $table, string $column, string $type): string
-    {
-        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
-            . ' ADD ' . $this->quoter->quoteColumnName($column) . ' '
-            . $this->getColumnType($type);
+        return ($where === '') ? $sql : ($sql . ' ' . $where);
     }
 
     /**
@@ -1004,256 +1105,6 @@ abstract class QueryBuilder
     {
         return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
             . ' DROP COLUMN ' . $this->quoter->quoteColumnName($column);
-    }
-
-    /**
-     * Builds a SQL statement for renaming a column.
-     *
-     * @param string $table the table whose column is to be renamed. The name will be properly quoted by the method.
-     * @param string $oldName the old name of the column. The name will be properly quoted by the method.
-     * @param string $newName the new name of the column. The name will be properly quoted by the method.
-     *
-     * @return string the SQL statement for renaming a DB column.
-     */
-    public function renameColumn(string $table, string $oldName, string $newName): string
-    {
-        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
-            . ' RENAME COLUMN ' . $this->quoter->quoteColumnName($oldName)
-            . ' TO ' . $this->quoter->quoteColumnName($newName);
-    }
-
-    /**
-     * Builds a SQL statement for changing the definition of a column.
-     *
-     * @param string $table the table whose column is to be changed. The table name will be properly quoted by the
-     * method.
-     * @param string $column the name of the column to be changed. The name will be properly quoted by the method.
-     * @param string $type the new column type. The {@see getColumnType()} method will be invoked to convert abstract
-     * column type (if any) into the physical one. Anything that is not recognized as abstract type will be kept
-     * in the generated SQL. For example, 'string' will be turned into 'varchar(255)', while 'string not null'
-     * will become 'varchar(255) not null'.
-     *
-     * @return string the SQL statement for changing the definition of a column.
-     */
-    public function alterColumn(string $table, string $column, string $type): string
-    {
-        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table) . ' CHANGE '
-            . $this->quoter->quoteColumnName($column) . ' '
-            . $this->quoter->quoteColumnName($column) . ' '
-            . $this->getColumnType($type);
-    }
-
-    /**
-     * Builds a SQL statement for adding a foreign key constraint to an existing table. The method will properly quote
-     * the table and column names.
-     *
-     * @param string $name the name of the foreign key constraint.
-     * @param string $table the table that the foreign key constraint will be added to.
-     * @param array|string $columns the name of the column to that the constraint will be added on. If there are
-     * multiple columns, separate them with commas or use an array to represent them.
-     * @param string $refTable the table that the foreign key references to.
-     * @param array|string $refColumns the name of the column that the foreign key references to. If there are multiple
-     * columns, separate them with commas or use an array to represent them.
-     * @param string|null $delete the ON DELETE option. Most DBMS support these options: RESTRICT, CASCADE, NO ACTION,
-     * SET DEFAULT, SET NULL.
-     * @param string|null $update the ON UPDATE option. Most DBMS support these options: RESTRICT, CASCADE, NO ACTION,
-     * SET DEFAULT, SET NULL.
-     *
-     * @psalm-param array<array-key, string>|string $columns
-     * @psalm-param array<array-key, string>|string $refColumns
-     *
-     * @throws Exception|InvalidArgumentException
-     *
-     * @return string the SQL statement for adding a foreign key constraint to an existing table.
-     */
-    public function addForeignKey(
-        string $name,
-        string $table,
-        array|string $columns,
-        string $refTable,
-        array|string $refColumns,
-        ?string $delete = null,
-        ?string $update = null
-    ): string {
-        $sql = 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
-            . ' ADD CONSTRAINT ' . $this->quoter->quoteColumnName($name)
-            . ' FOREIGN KEY (' . $this->buildColumns($columns) . ')'
-            . ' REFERENCES ' . $this->quoter->quoteTableName($refTable)
-            . ' (' . $this->buildColumns($refColumns) . ')';
-
-        if ($delete !== null) {
-            $sql .= ' ON DELETE ' . $delete;
-        }
-
-        if ($update !== null) {
-            $sql .= ' ON UPDATE ' . $update;
-        }
-
-        return $sql;
-    }
-
-    /**
-     * Builds a SQL statement for dropping a foreign key constraint.
-     *
-     * @param string $name the name of the foreign key constraint to be dropped. The name will be properly quoted by
-     * the method.
-     * @param string $table the table whose foreign is to be dropped. The name will be properly quoted by the method.
-     *
-     * @return string the SQL statement for dropping a foreign key constraint.
-     */
-    public function dropForeignKey(string $name, string $table): string
-    {
-        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
-            . ' DROP CONSTRAINT ' . $this->quoter->quoteColumnName($name);
-    }
-
-    /**
-     * Builds a SQL statement for creating a new index.
-     *
-     * @param string $name the name of the index. The name will be properly quoted by the method.
-     * @param string $table the table that the new index will be created for. The table name will be properly quoted by
-     * the method.
-     * @param array|string $columns the column(s) that should be included in the index. If there are multiple columns,
-     * separate them with commas or use an array to represent them. Each column name will be properly quoted by the
-     * method, unless a parenthesis is found in the name.
-     * @param bool $unique whether to add UNIQUE constraint on the created index.
-     *
-     * @psalm-param array<array-key, ExpressionInterface|string>|string $columns
-     *
-     * @throws Exception|InvalidArgumentException
-     *
-     * @return string the SQL statement for creating a new index.
-     */
-    public function createIndex(string $name, string $table, array|string $columns, bool $unique = false): string
-    {
-        return ($unique ? 'CREATE UNIQUE INDEX ' : 'CREATE INDEX ')
-            . $this->quoter->quoteTableName($name) . ' ON '
-            . $this->quoter->quoteTableName($table)
-            . ' (' . $this->buildColumns($columns) . ')';
-    }
-
-    /**
-     * Builds a SQL statement for dropping an index.
-     *
-     * @param string $name the name of the index to be dropped. The name will be properly quoted by the method.
-     * @param string $table the table whose index is to be dropped. The name will be properly quoted by the method.
-     *
-     * @return string the SQL statement for dropping an index.
-     */
-    public function dropIndex(string $name, string $table): string
-    {
-        return 'DROP INDEX ' . $this->quoter->quoteTableName($name) . ' ON '
-            . $this->quoter->quoteTableName($table);
-    }
-
-    /**
-     * Creates a SQL command for adding a unique constraint to an existing table.
-     *
-     * @param string $name the name of the unique constraint. The name will be properly quoted by the method.
-     * @param string $table the table that the unique constraint will be added to. The name will be properly quoted by
-     * the method.
-     * @param array|string $columns the name of the column to that the constraint will be added on. If there are
-     * multiple columns, separate them with commas. The name will be properly quoted by the method.
-     *
-     * @psalm-param array<array-key, string>|string $columns
-     *
-     * @return string the SQL statement for adding a unique constraint to an existing table.
-     */
-    public function addUnique(string $name, string $table, $columns): string
-    {
-        if (is_string($columns)) {
-            $columns = preg_split('/\s*,\s*/', $columns, -1, PREG_SPLIT_NO_EMPTY);
-        }
-
-        foreach ($columns as $i => $col) {
-            $columns[$i] = $this->quoter->quoteColumnName($col);
-        }
-
-        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table) . ' ADD CONSTRAINT '
-            . $this->quoter->quoteColumnName($name) . ' UNIQUE ('
-            . implode(', ', $columns) . ')';
-    }
-
-    /**
-     * Creates a SQL command for dropping a unique constraint.
-     *
-     * @param string $name the name of the unique constraint to be dropped. The name will be properly quoted by the
-     * method.
-     * @param string $table the table whose unique constraint is to be dropped. The name will be properly quoted by the
-     * method.
-     *
-     * @return string the SQL statement for dropping an unique constraint.
-     */
-    public function dropUnique(string $name, string $table): string
-    {
-        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
-            . ' DROP CONSTRAINT ' . $this->quoter->quoteColumnName($name);
-    }
-
-    /**
-     * Creates a SQL command for adding a check constraint to an existing table.
-     *
-     * @param string $name the name of the check constraint. The name will be properly quoted by the method.
-     * @param string $table the table that the check constraint will be added to. The name will be properly quoted by
-     * the method.
-     * @param string $expression the SQL of the `CHECK` constraint.
-     *
-     * @return string the SQL statement for adding a check constraint to an existing table.
-     */
-    public function addCheck(string $name, string $table, string $expression): string
-    {
-        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table) . ' ADD CONSTRAINT '
-            . $this->quoter->quoteColumnName($name)
-            . ' CHECK (' . $this->quoter->quoteSql($expression) . ')';
-    }
-
-    /**
-     * Creates a SQL command for dropping a check constraint.
-     *
-     * @param string $name the name of the check constraint to be dropped. The name will be properly quoted by the
-     * method.
-     * @param string $table the table whose check constraint is to be dropped. The name will be properly quoted by the
-     * method.
-     *
-     * @return string the SQL statement for dropping a check constraint.
-     */
-    public function dropCheck(string $name, string $table): string
-    {
-        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
-            . ' DROP CONSTRAINT ' . $this->quoter->quoteColumnName($name);
-    }
-
-    /**
-     * Builds a SQL command for adding comment to column.
-     *
-     * @param string $table the table whose column is to be commented. The table name will be properly quoted by the
-     * method.
-     * @param string $column the name of the column to be commented. The column name will be properly quoted by the
-     * method.
-     * @param string $comment the text of the comment to be added. The comment will be properly quoted by the method.
-     *
-     * @return string the SQL statement for adding comment on column.
-     */
-    public function addCommentOnColumn(string $table, string $column, string $comment): string
-    {
-        return 'COMMENT ON COLUMN ' . $this->quoter->quoteTableName($table) . '.'
-            . $this->quoter->quoteColumnName($column) . ' IS '
-            . $this->quoter->quoteValue($comment);
-    }
-
-    /**
-     * Builds a SQL command for adding comment to table.
-     *
-     * @param string $table the table whose column is to be commented. The table name will be properly quoted by the
-     * method.
-     * @param string $comment the text of the comment to be added. The comment will be properly quoted by the method.
-     *
-     * @return string the SQL statement for adding comment on table.
-     */
-    public function addCommentOnTable(string $table, string $comment): string
-    {
-        return 'COMMENT ON TABLE ' . $this->quoter->quoteTableName($table)
-            . ' IS ' . $this->quoter->quoteValue($comment);
     }
 
     /**
@@ -1286,31 +1137,91 @@ abstract class QueryBuilder
     }
 
     /**
-     * Creates a SQL View.
+     * Creates a SQL command for dropping a default value constraint.
      *
-     * @param string $viewName the name of the view to be created.
-     * @param Query|string $subQuery the select statement which defines the view.
+     * @param string $name the name of the default value constraint to be dropped.
+     * The name will be properly quoted by the method.
+     * @param string $table the table whose default value constraint is to be dropped.
+     * The name will be properly quoted by the method.
      *
-     * This can be either a string or a {@see Query} object.
+     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
      *
-     * @throws Exception|InvalidConfigException|NotSupportedException
-     *
-     * @return string the `CREATE VIEW` SQL statement.
+     * @return string the SQL statement for dropping a default value constraint.
      */
-    public function createView(string $viewName, $subQuery): string
+    public function dropDefaultValue(string $name, string $table): string
     {
-        if ($subQuery instanceof Query) {
-            /** @psalm-var array<array-key, int|string> $params */
-            [$rawQuery, $params] = $this->build($subQuery);
+        throw new NotSupportedException(static::class . ' does not support dropping default value constraints.');
+    }
 
-            foreach ($params as $key => $value) {
-                $params[$key] = $this->quoter->quoteValue($value);
-            }
+    /**
+     * Builds a SQL statement for dropping a foreign key constraint.
+     *
+     * @param string $name the name of the foreign key constraint to be dropped. The name will be properly quoted by
+     * the method.
+     * @param string $table the table whose foreign is to be dropped. The name will be properly quoted by the method.
+     *
+     * @return string the SQL statement for dropping a foreign key constraint.
+     */
+    public function dropForeignKey(string $name, string $table): string
+    {
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
+            . ' DROP CONSTRAINT ' . $this->quoter->quoteColumnName($name);
+    }
 
-            $subQuery = strtr($rawQuery, $params);
-        }
+    /**
+     * Builds a SQL statement for dropping an index.
+     *
+     * @param string $name the name of the index to be dropped. The name will be properly quoted by the method.
+     * @param string $table the table whose index is to be dropped. The name will be properly quoted by the method.
+     *
+     * @return string the SQL statement for dropping an index.
+     */
+    public function dropIndex(string $name, string $table): string
+    {
+        return 'DROP INDEX ' . $this->quoter->quoteTableName($name) . ' ON '
+            . $this->quoter->quoteTableName($table);
+    }
 
-        return 'CREATE VIEW ' . $this->quoter->quoteTableName($viewName) . ' AS ' . $subQuery;
+    /**
+     * Builds a SQL statement for removing a primary key constraint to an existing table.
+     *
+     * @param string $name the name of the primary key constraint to be removed.
+     * @param string $table the table that the primary key constraint will be removed from.
+     *
+     * @return string the SQL statement for removing a primary key constraint from an existing table.
+     */
+    public function dropPrimaryKey(string $name, string $table): string
+    {
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
+            . ' DROP CONSTRAINT ' . $this->quoter->quoteColumnName($name);
+    }
+
+    /**
+     * Builds a SQL statement for dropping a DB table.
+     *
+     * @param string $table the table to be dropped. The name will be properly quoted by the method.
+     *
+     * @return string the SQL statement for dropping a DB table.
+     */
+    public function dropTable(string $table): string
+    {
+        return 'DROP TABLE ' . $this->quoter->quoteTableName($table);
+    }
+
+    /**
+     * Creates a SQL command for dropping a unique constraint.
+     *
+     * @param string $name the name of the unique constraint to be dropped. The name will be properly quoted by the
+     * method.
+     * @param string $table the table whose unique constraint is to be dropped. The name will be properly quoted by the
+     * method.
+     *
+     * @return string the SQL statement for dropping an unique constraint.
+     */
+    public function dropUnique(string $name, string $table): string
+    {
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
+            . ' DROP CONSTRAINT ' . $this->quoter->quoteColumnName($name);
     }
 
     /**
@@ -1399,134 +1310,520 @@ abstract class QueryBuilder
     }
 
     /**
-     * @param array $columns
-     * @param array $params the binding parameters to be populated.
-     * @param bool|null $distinct
-     * @param string|null $selectOption
+     * Gets object of {@see ExpressionBuilderInterface} that is suitable for $expression.
      *
-     * @psalm-param array<array-key, ExpressionInterface|Query|string> $columns
+     * Uses {@see expressionBuilders} array to find a suitable builder class.
+     *
+     * @param ExpressionInterface $expression
+     *
+     * @throws InvalidArgumentException when $expression building is not supported by this QueryBuilder.
+     *
+     * @return ExpressionBuilderInterface|QueryBuilder|string
+     *
+     * @see expressionBuilders
+     */
+    public function getExpressionBuilder(ExpressionInterface $expression): string|ExpressionBuilderInterface|static
+    {
+        $className = get_class($expression);
+
+        if (!isset($this->expressionBuilders[$className])) {
+            foreach (array_reverse($this->expressionBuilders) as $expressionClass => $builderClass) {
+                if (is_subclass_of($expression, $expressionClass)) {
+                    $this->expressionBuilders[$className] = $builderClass;
+                    break;
+                }
+            }
+
+            if (!isset($this->expressionBuilders[$className])) {
+                throw new InvalidArgumentException(
+                    'Expression of class ' . $className . ' can not be built in ' . static::class
+                );
+            }
+        }
+
+        if ($this->expressionBuilders[$className] === __CLASS__) {
+            return $this;
+        }
+
+        if (!is_object($this->expressionBuilders[$className])) {
+            $this->expressionBuilders[$className] = new $this->expressionBuilders[$className]($this);
+        }
+
+        return $this->expressionBuilders[$className];
+    }
+
+    public function getQuoter(): QuoterInterface
+    {
+        return $this->quoter;
+    }
+
+    /**
+     * Creates an INSERT SQL statement.
+     *
+     * For example,
+     *
+     * ```php
+     * $sql = $queryBuilder->insert('user', [
+     *     'name' => 'Sam',
+     *     'age' => 30,
+     * ], $params);
+     * ```
+     *
+     * The method will properly escape the table and column names.
+     *
+     * @param string $table the table that new rows will be inserted into.
+     * @param array|Query $columns the column data (name => value) to be inserted into the table or instance of
+     * {@see Query} to perform INSERT INTO ... SELECT SQL statement. Passing of {@see Query}.
+     * @param array $params the binding parameters that will be generated by this method. They should be bound to the
+     * DB command later.
      *
      * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
      *
-     * @return string the SELECT clause built from {@see Query::$select}.
+     * @return string the INSERT SQL.
      */
-    public function buildSelect(
-        array $columns,
-        array &$params,
-        ?bool $distinct = false,
-        string $selectOption = null
+    public function insert(string $table, Query|array $columns, array &$params = []): string
+    {
+        [$names, $placeholders, $values, $params] = $this->prepareInsertValues($table, $columns, $params);
+
+        return 'INSERT INTO ' . $this->quoter->quoteTableName($table)
+            . (!empty($names) ? ' (' . implode(', ', $names) . ')' : '')
+            . (!empty($placeholders) ? ' VALUES (' . implode(', ', $placeholders) . ')' : $values);
+    }
+
+    /**
+     * Builds a SQL statement for renaming a column.
+     *
+     * @param string $table the table whose column is to be renamed. The name will be properly quoted by the method.
+     * @param string $oldName the old name of the column. The name will be properly quoted by the method.
+     * @param string $newName the new name of the column. The name will be properly quoted by the method.
+     *
+     * @return string the SQL statement for renaming a DB column.
+     */
+    public function renameColumn(string $table, string $oldName, string $newName): string
+    {
+        return 'ALTER TABLE ' . $this->quoter->quoteTableName($table)
+            . ' RENAME COLUMN ' . $this->quoter->quoteColumnName($oldName)
+            . ' TO ' . $this->quoter->quoteColumnName($newName);
+    }
+
+    /**
+     * Builds a SQL statement for renaming a DB table.
+     *
+     * @param string $oldName the table to be renamed. The name will be properly quoted by the method.
+     * @param string $newName the new table name. The name will be properly quoted by the method.
+     *
+     * @return string the SQL statement for renaming a DB table.
+     */
+    public function renameTable(string $oldName, string $newName): string
+    {
+        return 'RENAME TABLE ' . $this->quoter->quoteTableName($oldName) .
+            ' TO ' . $this->quoter->quoteTableName($newName);
+    }
+
+    /**
+     * Creates a SQL statement for resetting the sequence value of a table's primary key.
+     *
+     * The sequence will be reset such that the primary key of the next new row inserted will have the specified value
+     * or 1.
+     *
+     * @param string $tableName the name of the table whose primary key sequence will be reset.
+     * @param array|int|string|null $value the value for the primary key of the next new row inserted. If this is not
+     * set, the next new row's primary key will have a value 1.
+     *
+     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
+     *
+     * @return string the SQL statement for resetting sequence.
+     */
+    public function resetSequence(string $tableName, array|int|string|null $value = null): string
+    {
+        throw new NotSupportedException($this->db->getDriverName() . ' does not support resetting sequence.');
+    }
+
+    /**
+     * Creates a SELECT EXISTS() SQL statement.
+     *
+     * @param string $rawSql the sub-query in a raw form to select from.
+     *
+     * @return string the SELECT EXISTS() SQL statement.
+     */
+    public function selectExists(string $rawSql): string
+    {
+        return 'SELECT EXISTS(' . $rawSql . ')';
+    }
+
+    /**
+     * Setter for {@see conditionClasses} property.
+     *
+     * @param string[] $classes map of condition aliases to condition classes. For example:
+     *
+     * ```php
+     * ['LIKE' => \Yiisoft\Db\Condition\LikeCondition::class]
+     * ```
+     *
+     * See {@see conditionClasses} docs for details.
+     */
+    public function setConditionClasses(array $classes): void
+    {
+        $this->conditionClasses = array_merge($this->conditionClasses, $classes);
+    }
+
+    /**
+     * Setter for {@see expressionBuilders property.
+     *
+     * @param string[] $builders array of builders that should be merged with the pre-defined ones in property.
+     *
+     * See {@see expressionBuilders} docs for details.
+     */
+    public function setExpressionBuilders(array $builders): void
+    {
+        $this->expressionBuilders = array_merge($this->expressionBuilders, $builders);
+    }
+
+    /**
+     * @param string the separator between different fragments of a SQL statement.
+     *
+     * Defaults to an empty space. This is mainly used by {@see build()} when generating a SQL statement.
+     */
+    public function setSeparator(string $separator): void
+    {
+        $this->separator = $separator;
+    }
+
+    /**
+     * Builds a SQL statement for truncating a DB table.
+     *
+     * @param string $table the table to be truncated. The name will be properly quoted by the method.
+     *
+     * @return string the SQL statement for truncating a DB table.
+     */
+    public function truncateTable(string $table): string
+    {
+        return 'TRUNCATE TABLE ' . $this->quoter->quoteTableName($table);
+    }
+
+    /**
+     * Creates an UPDATE SQL statement.
+     *
+     * For example,
+     *
+     * ```php
+     * $params = [];
+     * $sql = $queryBuilder->update('user', ['status' => 1], 'age > 30', $params);
+     * ```
+     *
+     * The method will properly escape the table and column names.
+     *
+     * @param string $table the table to be updated.
+     * @param array $columns the column data (name => value) to be updated.
+     * @param array|string $condition the condition that will be put in the WHERE part. Please refer to
+     * {@see Query::where()} on how to specify condition.
+     * @param array $params the binding parameters that will be modified by this method so that they can be bound to the
+     * DB command later.
+     *
+     * @psalm-param array<string, ExpressionInterface|string> $columns
+     *
+     * @throws Exception|InvalidArgumentException
+     *
+     * @return string the UPDATE SQL.
+     */
+    public function update(string $table, array $columns, array|string $condition, array &$params = []): string
+    {
+        /**
+         * @psalm-var array $lines
+         * @psalm-var array $params
+         */
+        [$lines, $params] = $this->prepareUpdateSets($table, $columns, $params);
+        $sql = 'UPDATE ' . $this->quoter->quoteTableName($table) . ' SET ' . implode(', ', $lines);
+        $where = $this->buildWhere($condition, $params);
+
+        return ($where === '') ? $sql : ($sql . ' ' . $where);
+    }
+
+    /**
+     * Creates an SQL statement to insert rows into a database table if they do not already exist (matching unique
+     * constraints), or update them if they do.
+     *
+     * For example,
+     *
+     * ```php
+     * $sql = $queryBuilder->upsert('pages', [
+     *     'name' => 'Front page',
+     *     'url' => 'http://example.com/', // url is unique
+     *     'visits' => 0,
+     * ], [
+     *     'visits' => new \Yiisoft\Db\Expression('visits + 1'),
+     * ], $params);
+     * ```
+     *
+     * The method will properly escape the table and column names.
+     *
+     * @param string $table the table that new rows will be inserted into/updated in.
+     * @param array|Query $insertColumns the column data (name => value) to be inserted into the table or instance
+     * of {@see Query} to perform `INSERT INTO ... SELECT` SQL statement.
+     * @param array|bool $updateColumns the column data (name => value) to be updated if they already exist.
+     * If `true` is passed, the column data will be updated to match the insert column data.
+     * If `false` is passed, no update will be performed if the column data already exists.
+     * @param array $params the binding parameters that will be generated by this method. They should be bound to the DB
+     * command later.
+     *
+     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
+     *
+     * @return string the resulting SQL.
+     */
+    public function upsert(
+        string $table,
+        Query|array $insertColumns,
+        bool|array $updateColumns,
+        array &$params
     ): string {
-        $select = $distinct ? 'SELECT DISTINCT' : 'SELECT';
-
-        if ($selectOption !== null) {
-            $select .= ' ' . $selectOption;
-        }
-
-        if (empty($columns)) {
-            return $select . ' *';
-        }
-
-        foreach ($columns as $i => $column) {
-            if ($column instanceof ExpressionInterface) {
-                if (is_int($i)) {
-                    $columns[$i] = $this->buildExpression($column, $params);
-                } else {
-                    $columns[$i] = $this->buildExpression($column, $params) . ' AS '
-                        . $this->quoter->quoteColumnName($i);
-                }
-            } elseif ($column instanceof Query) {
-                [$sql, $params] = $this->build($column, $params);
-                $columns[$i] = "($sql) AS " . $this->quoter->quoteColumnName((string) $i);
-            } elseif (is_string($i) && $i !== $column) {
-                if (!str_contains($column, '(')) {
-                    $column = $this->quoter->quoteColumnName($column);
-                }
-                $columns[$i] = "$column AS " . $this->quoter->quoteColumnName($i);
-            } elseif (!str_contains($column, '(')) {
-                if (preg_match('/^(.*?)(?i:\s+as\s+|\s+)([\w\-_.]+)$/', $column, $matches)) {
-                    $columns[$i] = $this->quoter->quoteColumnName(
-                        $matches[1]
-                    ) . ' AS ' . $this->quoter->quoteColumnName($matches[2]);
-                } else {
-                    $columns[$i] = $this->quoter->quoteColumnName($column);
-                }
-            }
-        }
-
-        return $select . ' ' . implode(', ', $columns);
+        throw new NotSupportedException(static::class . ' does not support upsert.');
     }
 
     /**
-     * @param array|null $tables
-     * @param array $params the binding parameters to be populated.
+     * Contains array of default condition classes. Extend this method, if you want to change default condition classes
+     * for the query builder.
      *
-     * @psalm-param array<array-key, array|Query|string> $tables
+     * @return array
      *
-     * @throws Exception|InvalidConfigException|NotSupportedException
-     *
-     * @return string the FROM clause built from {@see Query::$from}.
+     * See {@see conditionClasses} docs for details.
      */
-    public function buildFrom(?array $tables, array &$params): string
+    protected function defaultConditionClasses(): array
     {
-        if (empty($tables)) {
-            return '';
-        }
-
-        $tables = $this->quoteTableNames($tables, $params);
-
-        return 'FROM ' . implode(', ', $tables);
+        return [
+            'NOT' => Conditions\NotCondition::class,
+            'AND' => Conditions\AndCondition::class,
+            'OR' => Conditions\OrCondition::class,
+            'BETWEEN' => Conditions\BetweenCondition::class,
+            'NOT BETWEEN' => Conditions\BetweenCondition::class,
+            'IN' => Conditions\InCondition::class,
+            'NOT IN' => Conditions\InCondition::class,
+            'LIKE' => Conditions\LikeCondition::class,
+            'NOT LIKE' => Conditions\LikeCondition::class,
+            'OR LIKE' => Conditions\LikeCondition::class,
+            'OR NOT LIKE' => Conditions\LikeCondition::class,
+            'EXISTS' => Conditions\ExistsCondition::class,
+            'NOT EXISTS' => Conditions\ExistsCondition::class,
+        ];
     }
 
     /**
-     * @param array $joins
-     * @param array $params the binding parameters to be populated.
+     * Contains array of default expression builders. Extend this method and override it, if you want to change default
+     * expression builders for this query builder.
      *
-     * @psalm-param array<
-     *   array-key,
-     *   array{
-     *     0?:string,
-     *     1?:array<array-key, Query|string>|string,
-     *     2?:array|ExpressionInterface|string|null
-     *   }|null
-     * > $joins
+     * @return array
      *
-     * @throws Exception if the $joins parameter is not in proper format.
-     *
-     * @return string the JOIN clause built from {@see Query::$join}.
+     * See {@see expressionBuilders} docs for details.
      */
-    public function buildJoin(array $joins, array &$params): string
+    protected function defaultExpressionBuilders(): array
     {
-        if (empty($joins)) {
-            return '';
+        return [
+            Query::class => QueryExpressionBuilder::class,
+            PdoValue::class => PdoValueBuilder::class,
+            Expression::class => ExpressionBuilder::class,
+            Conditions\ConjunctionCondition::class => Conditions\ConjunctionConditionBuilder::class,
+            Conditions\NotCondition::class => Conditions\NotConditionBuilder::class,
+            Conditions\AndCondition::class => Conditions\ConjunctionConditionBuilder::class,
+            Conditions\OrCondition::class => Conditions\ConjunctionConditionBuilder::class,
+            Conditions\BetweenCondition::class => Conditions\BetweenConditionBuilder::class,
+            Conditions\InCondition::class => Conditions\InConditionBuilder::class,
+            Conditions\LikeCondition::class => Conditions\LikeConditionBuilder::class,
+            Conditions\ExistsCondition::class => Conditions\ExistsConditionBuilder::class,
+            Conditions\SimpleCondition::class => Conditions\SimpleConditionBuilder::class,
+            Conditions\HashCondition::class => Conditions\HashConditionBuilder::class,
+            Conditions\BetweenColumnsCondition::class => Conditions\BetweenColumnsConditionBuilder::class,
+        ];
+    }
+
+    /**
+     * Extracts table alias if there is one or returns false.
+     *
+     * @param string $table
+     *
+     * @return array|bool
+     */
+    protected function extractAlias(string $table): array|bool
+    {
+        if (preg_match('/^(.*?)(?i:\s+as|)\s+([^ ]+)$/', $table, $matches)) {
+            return $matches;
         }
 
-        foreach ($joins as $i => $join) {
-            if (!is_array($join) || !isset($join[0], $join[1])) {
-                throw new Exception(
-                    'A join clause must be specified as an array of join type, join table, and optionally join '
-                    . 'condition.'
-                );
+        return false;
+    }
+
+    /**
+     * Checks to see if the given limit is effective.
+     *
+     * @param mixed $limit the given limit.
+     *
+     * @return bool whether the limit is effective.
+     */
+    protected function hasLimit(mixed $limit): bool
+    {
+        return ($limit instanceof ExpressionInterface) || ctype_digit((string) $limit);
+    }
+
+    /**
+     * Checks to see if the given offset is effective.
+     *
+     * @param mixed $offset the given offset.
+     *
+     * @return bool whether the offset is effective.
+     */
+    protected function hasOffset(mixed $offset): bool
+    {
+        return ($offset instanceof ExpressionInterface) || (ctype_digit((string)$offset) && (string)$offset !== '0');
+    }
+
+    /**
+     * Prepare select-subquery and field names for INSERT INTO ... SELECT SQL statement.
+     *
+     * @param Query $columns Object, which represents select query.
+     * @param array $params the parameters to be bound to the generated SQL statement. These parameters will be included
+     * in the result with the additional parameters generated during the query building process.
+     *
+     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
+     *
+     * @return array array of column names, values and params.
+     */
+    protected function prepareInsertSelectSubQuery(Query $columns, array $params = []): array
+    {
+        if (
+            !is_array($columns->getSelect())
+            || empty($columns->getSelect())
+            || in_array('*', $columns->getSelect(), true)
+        ) {
+            throw new InvalidArgumentException('Expected select query object with enumerated (named) parameters');
+        }
+
+        [$values, $params] = $this->build($columns, $params);
+
+        $names = [];
+        $values = ' ' . $values;
+
+        foreach ($columns->getSelect() as $title => $field) {
+            if (is_string($title)) {
+                $names[] = $this->quoter->quoteColumnName($title);
+            } elseif (preg_match('/^(.*?)(?i:\s+as\s+|\s+)([\w\-_.]+)$/', $field, $matches)) {
+                $names[] = $this->quoter->quoteColumnName($matches[2]);
+            } else {
+                $names[] = $this->quoter->quoteColumnName($field);
             }
+        }
 
-            /* 0:join type, 1:join table, 2:on-condition (optional) */
-            [$joinType, $table] = $join;
+        return [$names, $values, $params];
+    }
 
-            $tables = $this->quoteTableNames((array) $table, $params);
+    /**
+     * Prepares a `VALUES` part for an `INSERT` SQL statement.
+     *
+     * @param string $table the table that new rows will be inserted into.
+     * @param array|Query $columns the column data (name => value) to be inserted into the table or instance of
+     * {@see Query} to perform INSERT INTO ... SELECT SQL statement.
+     * @param array $params the binding parameters that will be generated by this method.
+     * They should be bound to the DB command later.
+     *
+     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
+     *
+     * @return array array of column names, placeholders, values and params.
+     */
+    protected function prepareInsertValues(string $table, Query|array $columns, array $params = []): array
+    {
+        $tableSchema = $this->schema->getTableSchema($table);
+        $columnSchemas = $tableSchema !== null ? $tableSchema->getColumns() : [];
+        $names = [];
+        $placeholders = [];
+        $values = ' DEFAULT VALUES';
 
-            /** @var string $table */
-            $table = reset($tables);
-            $joins[$i] = "$joinType $table";
+        if ($columns instanceof Query) {
+            [$names, $values, $params] = $this->prepareInsertSelectSubQuery($columns, $params);
+        } else {
+            foreach ($columns as $name => $value) {
+                $names[] = $this->quoter->quoteColumnName($name);
+                $value = isset($columnSchemas[$name]) ? $columnSchemas[$name]->dbTypecast($value) : $value;
 
-            if (isset($join[2])) {
-                $condition = $this->buildCondition($join[2], $params);
-                if ($condition !== '') {
-                    $joins[$i] .= ' ON ' . $condition;
+                if ($value instanceof ExpressionInterface) {
+                    $placeholders[] = $this->buildExpression($value, $params);
+                } elseif ($value instanceof Query) {
+                    [$sql, $params] = $this->build($value, $params);
+                    $placeholders[] = "($sql)";
+                } else {
+                    $placeholders[] = $this->bindParam($value, $params);
                 }
             }
         }
 
-        /** @psalm-var array<string> $joins */
-        return implode($this->separator, $joins);
+        return [$names, $placeholders, $values, $params];
+    }
+
+    /**
+     * Prepares a `SET` parts for an `UPDATE` SQL statement.
+     *
+     * @param string $table the table to be updated.
+     * @param array $columns the column data (name => value) to be updated.
+     * @param array $params the binding parameters that will be modified by this method so that they can be bound to the
+     * DB command later.
+     *
+     * @psalm-param array<string, ExpressionInterface|string> $columns
+     *
+     * @throws Exception|InvalidArgumentException
+     *
+     * @return array `SET` parts for an `UPDATE` SQL statement (the first array element) and params (the second array
+     * element).
+     */
+    protected function prepareUpdateSets(string $table, array $columns, array $params = []): array
+    {
+        $tableSchema = $this->schema->getTableSchema($table);
+
+        $columnSchemas = $tableSchema !== null ? $tableSchema->getColumns() : [];
+
+        $sets = [];
+
+        foreach ($columns as $name => $value) {
+            /** @psalm-var mixed $value */
+            $value = isset($columnSchemas[$name]) ? $columnSchemas[$name]->dbTypecast($value) : $value;
+            if ($value instanceof ExpressionInterface) {
+                $placeholder = $this->buildExpression($value, $params);
+            } else {
+                $placeholder = $this->bindParam($value, $params);
+            }
+
+            $sets[] = $this->quoter->quoteColumnName($name) . '=' . $placeholder;
+        }
+
+        return [$sets, $params];
+    }
+
+    /**
+     * @param string $table
+     * @param array|Query $insertColumns
+     * @param bool|array|Query $updateColumns
+     * @param Constraint[] $constraints this parameter receives a matched constraint list.
+     * The constraints will be unique by their column names.
+     *
+     * @return array
+     *@throws Exception|JsonException
+     *
+     */
+    protected function prepareUpsertColumns(
+        string $table,
+        Query|array $insertColumns,
+        Query|bool|array $updateColumns,
+        array &$constraints = []
+    ): array {
+        if ($insertColumns instanceof Query) {
+            [$insertNames] = $this->prepareInsertSelectSubQuery($insertColumns);
+        } else {
+            $insertNames = array_map([$this->quoter, 'quoteColumnName'], array_keys($insertColumns));
+        }
+
+        $uniqueNames = $this->getTableUniqueColumnNames($table, $insertNames, $constraints);
+        $uniqueNames = array_map([$this->quoter, 'quoteColumnName'], $uniqueNames);
+
+        if ($updateColumns !== true) {
+            return [$uniqueNames, $insertNames, null];
+        }
+
+        return [$uniqueNames, $insertNames, array_diff($insertNames, $uniqueNames)];
     }
 
     /**
@@ -1567,390 +1864,76 @@ abstract class QueryBuilder
     }
 
     /**
-     * @param array|string|ConditionInterface|ExpressionInterface|null $condition
-     * @param array $params the binding parameters to be populated.
+     * Returns all column names belonging to constraints enforcing uniqueness (`PRIMARY KEY`, `UNIQUE INDEX`, etc.)
+     * for the named table removing constraints which did not cover the specified column list.
      *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
+     * The column list will be unique by column names.
      *
-     * @return string the WHERE clause built from {@see Query::$where}.
+     * @param string $name table name. The table name may contain schema name if any. Do not quote the table name.
+     * @param string[] $columns source column list.
+     * @param Constraint[] $constraints this parameter optionally receives a matched constraint list. The constraints
+     * will be unique by their column names.
+     *
+     * @throws JsonException
+     *
+     * @return array column list.
      */
-    public function buildWhere(
-        array|string|ConditionInterface|ExpressionInterface|null $condition,
-        array &$params = []
-    ): string {
-        $where = $this->buildCondition($condition, $params);
-        return ($where === '') ? '' : ('WHERE ' . $where);
-    }
-
-    /**
-     * @param array $columns
-     * @psalm-param array<string, Expression|string> $columns
-     *
-     * @param array $params the binding parameters to be populated
-     *
-     * @throws Exception|InvalidArgumentException
-     *
-     * @return string the GROUP BY clause
-     */
-    public function buildGroupBy(array $columns, array &$params = []): string
+    private function getTableUniqueColumnNames(string $name, array $columns, array &$constraints = []): array
     {
-        if (empty($columns)) {
-            return '';
+        if (!$this->schema instanceof ConstraintFinderInterface) {
+            return [];
         }
 
-        foreach ($columns as $i => $column) {
-            if ($column instanceof Expression) {
-                $columns[$i] = $this->buildExpression($column);
-                $params = array_merge($params, $column->getParams());
-            } elseif (strpos($column, '(') === false) {
-                $columns[$i] = $this->quoter->quoteColumnName($column);
+        $constraints = [];
+        $primaryKey = $this->schema->getTablePrimaryKey($name);
+
+        if ($primaryKey !== null) {
+            $constraints[] = $primaryKey;
+        }
+
+        foreach ($this->schema->getTableIndexes($name) as $constraint) {
+            if ($constraint->isUnique()) {
+                $constraints[] = $constraint;
             }
         }
 
-        return 'GROUP BY ' . implode(', ', $columns);
-    }
+        $constraints = array_merge($constraints, $this->schema->getTableUniques($name));
 
-    /**
-     * @param array|string|null $condition
-     * @param array $params the binding parameters to be populated.
-     *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
-     *
-     * @return string the HAVING clause built from {@see Query::$having}.
-     */
-    public function buildHaving(array|string|null $condition, array &$params = []): string
-    {
-        $having = $this->buildCondition($condition, $params);
+        /** Remove duplicates */
+        $constraints = array_combine(
+            array_map(
+                static function ($constraint) {
+                    $columns = $constraint->getColumnNames();
+                    sort($columns, SORT_STRING);
 
-        return ($having === '') ? '' : ('HAVING ' . $having);
-    }
+                    return json_encode($columns, JSON_THROW_ON_ERROR);
+                },
+                $constraints
+            ),
+            $constraints
+        );
 
-    /**
-     * Builds the ORDER BY and LIMIT/OFFSET clauses and appends them to the given SQL.
-     *
-     * @param string $sql the existing SQL (without ORDER BY/LIMIT/OFFSET).
-     * @param array $orderBy the order by columns. See {@see Query::orderBy} for more details on how to specify this
-     * parameter.
-     * @param int|Expression|null $limit the limit number. See {@see Query::limit} for more details.
-     * @param int|Expression|null $offset the offset number. See {@see Query::offset} for more details.
-     * @param array $params the binding parameters to be populated.
-     *
-     * @psalm-param array<string, Expression|int|string> $orderBy
-     *
-     * @throws Exception|InvalidArgumentException
-     *
-     * @return string the SQL completed with ORDER BY/LIMIT/OFFSET (if any).
-     */
-    public function buildOrderByAndLimit(
-        string $sql,
-        array $orderBy,
-        Expression|int|null $limit,
-        Expression|int|null $offset,
-        array &$params = []
-    ): string {
-        $orderBy = $this->buildOrderBy($orderBy, $params);
-        if ($orderBy !== '') {
-            $sql .= $this->separator . $orderBy;
-        }
-        $limit = $this->buildLimit($limit, $offset);
-        if ($limit !== '') {
-            $sql .= $this->separator . $limit;
-        }
+        $columnNames = [];
+        $quoter = $this->quoter;
 
-        return $sql;
-    }
+        /** Remove all constraints which do not cover the specified column list */
+        $constraints = array_values(
+            array_filter(
+                $constraints,
+                static function ($constraint) use ($quoter, $columns, &$columnNames) {
+                    /** @psalm-suppress UndefinedClass, UndefinedMethod */
+                    $constraintColumnNames = array_map([$quoter, 'quoteColumnName'], $constraint->getColumnNames());
+                    $result = !array_diff($constraintColumnNames, $columns);
 
-    /**
-     * @param array $columns
-     * @param array $params the binding parameters to be populated
-     *
-     * @psalm-param array<string, Expression|int|string> $columns
-     *
-     * @throws Exception|InvalidArgumentException
-     *
-     * @return string the ORDER BY clause built from {@see Query::$orderBy}.
-     */
-    public function buildOrderBy(array $columns, array &$params = []): string
-    {
-        if (empty($columns)) {
-            return '';
-        }
+                    if ($result) {
+                        $columnNames = array_merge($columnNames, $constraintColumnNames);
+                    }
 
-        $orders = [];
+                    return $result;
+                }
+            )
+        );
 
-        foreach ($columns as $name => $direction) {
-            if ($direction instanceof Expression) {
-                $orders[] = $this->buildExpression($direction);
-                $params = array_merge($params, $direction->getParams());
-            } else {
-                $orders[] = $this->quoter->quoteColumnName($name) . ($direction === SORT_DESC ? ' DESC' : '');
-            }
-        }
-
-        return 'ORDER BY ' . implode(', ', $orders);
-    }
-
-    /**
-     * @param int|Expression|null $limit
-     * @param int|Expression|null $offset
-     *
-     * @return string the LIMIT and OFFSET clauses.
-     */
-    public function buildLimit(Expression|int|null $limit, Expression|int|null $offset): string
-    {
-        $sql = '';
-
-        if ($this->hasLimit($limit)) {
-            $sql = 'LIMIT ' . (string) $limit;
-        }
-
-        if ($this->hasOffset($offset)) {
-            $sql .= ' OFFSET ' . (string) $offset;
-        }
-
-        return ltrim($sql);
-    }
-
-    /**
-     * Checks to see if the given limit is effective.
-     *
-     * @param mixed $limit the given limit.
-     *
-     * @return bool whether the limit is effective.
-     */
-    protected function hasLimit(mixed $limit): bool
-    {
-        return ($limit instanceof ExpressionInterface) || ctype_digit((string) $limit);
-    }
-
-    /**
-     * Checks to see if the given offset is effective.
-     *
-     * @param mixed $offset the given offset.
-     *
-     * @return bool whether the offset is effective.
-     */
-    protected function hasOffset(mixed $offset): bool
-    {
-        return ($offset instanceof ExpressionInterface) || (ctype_digit((string)$offset) && (string)$offset !== '0');
-    }
-
-    /**
-     * @param array $unions
-     * @param array $params the binding parameters to be populated
-     *
-     * @psalm-param array<array{query:Query|string, all:bool}> $unions
-     *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
-     *
-     * @return string the UNION clause built from {@see Query::$union}.
-     */
-    public function buildUnion(array $unions, array &$params): string
-    {
-        if (empty($unions)) {
-            return '';
-        }
-
-        $result = '';
-
-        foreach ($unions as $i => $union) {
-            $query = $union['query'];
-            if ($query instanceof Query) {
-                [$unions[$i]['query'], $params] = $this->build($query, $params);
-            }
-
-            $result .= 'UNION ' . ($union['all'] ? 'ALL ' : '') . '( ' . $unions[$i]['query'] . ' ) ';
-        }
-
-        return trim($result);
-    }
-
-    /**
-     * Processes columns and properly quotes them if necessary.
-     *
-     * It will join all columns into a string with comma as separators.
-     *
-     * @param array|string $columns the columns to be processed.
-     *
-     * @psalm-param array<array-key, ExpressionInterface|string>|string $columns
-     *
-     * @throws Exception|InvalidArgumentException
-     *
-     * @return string the processing result.
-     */
-    public function buildColumns(array|string $columns): string
-    {
-        if (!is_array($columns)) {
-            if (str_contains($columns, '(')) {
-                return $columns;
-            }
-
-            $rawColumns = $columns;
-            $columns = preg_split('/\s*,\s*/', $columns, -1, PREG_SPLIT_NO_EMPTY);
-
-            if ($columns === false) {
-                throw new InvalidArgumentException("$rawColumns is not valid columns.");
-            }
-        }
-        foreach ($columns as $i => $column) {
-            if ($column instanceof ExpressionInterface) {
-                $columns[$i] = $this->buildExpression($column);
-            } elseif (!str_contains($column, '(')) {
-                $columns[$i] = $this->quoter->quoteColumnName($column);
-            }
-        }
-
-        return implode(', ', $columns);
-    }
-
-    /**
-     * Parses the condition specification and generates the corresponding SQL expression.
-     *
-     * @param array|string|ExpressionInterface|null $condition the condition specification.
-     * Please refer to {@see Query::where()} on how to specify a condition.
-     * @param array $params the binding parameters to be populated.
-     *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
-     *
-     * @return string the generated SQL expression.
-     */
-    public function buildCondition(array|string|ExpressionInterface|null $condition, array &$params = []): string
-    {
-        if (is_array($condition)) {
-            if (empty($condition)) {
-                return '';
-            }
-
-            $condition = $this->createConditionFromArray($condition);
-        }
-
-        if ($condition instanceof ExpressionInterface) {
-            return $this->buildExpression($condition, $params);
-        }
-
-        return $condition ?? '';
-    }
-
-    /**
-     * Transforms $condition defined in array format (as described in {@see Query::where()} to instance of
-     *
-     * @param array $condition.
-     *
-     * @throws InvalidArgumentException
-     *
-     * @return ConditionInterface
-     *
-     * {@see ConditionInterface|ConditionInterface} according to {@see conditionClasses} map.
-     */
-    public function createConditionFromArray(array $condition): ConditionInterface
-    {
-        /** operator format: operator, operand 1, operand 2, ... */
-        if (isset($condition[0])) {
-            $operator = strtoupper((string) array_shift($condition));
-
-            $className = $this->conditionClasses[$operator] ?? SimpleCondition::class;
-
-            /** @var ConditionInterface $className */
-            return $className::fromArrayDefinition($operator, $condition);
-        }
-
-        /** hash format: 'column1' => 'value1', 'column2' => 'value2', ... */
-        return new HashCondition($condition);
-    }
-
-    /**
-     * Creates a SELECT EXISTS() SQL statement.
-     *
-     * @param string $rawSql the sub-query in a raw form to select from.
-     *
-     * @return string the SELECT EXISTS() SQL statement.
-     */
-    public function selectExists(string $rawSql): string
-    {
-        return 'SELECT EXISTS(' . $rawSql . ')';
-    }
-
-    /**
-     * Helper method to add $value to $params array using {@see PARAM_PREFIX}.
-     *
-     * @param mixed $value
-     * @param array $params passed by reference.
-     *
-     * @return string the placeholder name in $params array.
-     */
-    public function bindParam(mixed $value, array &$params = []): string
-    {
-        $phName = self::PARAM_PREFIX . count($params);
-
-        /** @psalm-var mixed */
-        $params[$phName] = $value;
-
-        return $phName;
-    }
-
-    /**
-     * Extracts table alias if there is one or returns false.
-     *
-     * @param string $table
-     *
-     * @return array|bool
-     */
-    protected function extractAlias(string $table): array|bool
-    {
-        if (preg_match('/^(.*?)(?i:\s+as|)\s+([^ ]+)$/', $table, $matches)) {
-            return $matches;
-        }
-
-        return false;
-    }
-
-    /**
-     * @param array $withs
-     * @param array $params
-     *
-     * @psalm-param array<array-key, array{query:string|Query, alias:string, recursive:bool}> $withs
-     *
-     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
-     *
-     * @return string
-     */
-    public function buildWithQueries(array $withs, array &$params): string
-    {
-        if (empty($withs)) {
-            return '';
-        }
-
-        $recursive = false;
-        $result = [];
-
-        foreach ($withs as $with) {
-            if ($with['recursive']) {
-                $recursive = true;
-            }
-
-            $query = $with['query'];
-            if ($query instanceof Query) {
-                [$with['query'], $params] = $this->build($query, $params);
-            }
-
-            $result[] = $with['alias'] . ' AS (' . $with['query'] . ')';
-        }
-
-        return 'WITH ' . ($recursive ? 'RECURSIVE ' : '') . implode(', ', $result);
-    }
-
-    /**
-     * @param string the separator between different fragments of a SQL statement.
-     *
-     * Defaults to an empty space. This is mainly used by {@see build()} when generating a SQL statement.
-     */
-    public function setSeparator(string $separator): void
-    {
-        $this->separator = $separator;
-    }
-
-    public function getQuoter(): QuoterInterface
-    {
-        return $this->quoter;
+        return array_unique($columnNames);
     }
 }
