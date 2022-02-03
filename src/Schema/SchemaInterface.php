@@ -158,4 +158,9 @@ interface SchemaInterface extends ConstraintSchemaInterface
      * @link http://en.wikipedia.org/wiki/Isolation_%28database_systems%29#Isolation_levels
      */
     public function setTransactionIsolationLevel(string $level): void;
+
+    /**
+     * @return bool whether this DBMS supports [savepoint](http://en.wikipedia.org/wiki/Savepoint).
+     */
+    public function supportsSavepoint(): bool;
 }
