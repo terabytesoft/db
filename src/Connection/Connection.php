@@ -301,7 +301,7 @@ abstract class Connection implements ConnectionInterface
              */
             try {
                 $transaction->rollBack();
-            } catch (PDOException $e) {
+            } catch (Exception $e) {
                 if ($this->logger !== null) {
                     $this->logger->log(LogLevel::ERROR, $e, [__METHOD__]);
                     /** hide this exception to be able to continue throwing original exception outside */
