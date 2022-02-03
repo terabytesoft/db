@@ -8,7 +8,7 @@ use Generator;
 use JsonException;
 use Yiisoft\Db\Command\Command;
 use Yiisoft\Db\Constraint\Constraint;
-use Yiisoft\Db\Constraint\ConstraintFinderInterface;
+use Yiisoft\Db\Constraint\ConstraintSchemaInterface;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\InvalidArgumentException;
 use Yiisoft\Db\Exception\InvalidConfigException;
@@ -1436,7 +1436,7 @@ abstract class QueryBuilder implements QueryBuilderInterface
      */
     public function resetSequence(string $tableName, array|int|string|null $value = null): string
     {
-        throw new NotSupportedException($this->db->getDriverName() . ' does not support resetting sequence.');
+        throw new NotSupportedException(static::class . ' does not support resetting sequence.');
     }
 
     /**
@@ -1880,7 +1880,7 @@ abstract class QueryBuilder implements QueryBuilderInterface
      */
     private function getTableUniqueColumnNames(string $name, array $columns, array &$constraints = []): array
     {
-        if (!$this->schema instanceof ConstraintFinderInterface) {
+        if (!$this->schema instanceof ConstraintSchemaInterface) {
             return [];
         }
 

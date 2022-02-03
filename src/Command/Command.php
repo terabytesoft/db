@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Command;
 
+use JsonException;
 use PDO;
 use PDOStatement;
 use Psr\Log\LogLevel;
@@ -22,6 +23,7 @@ use Yiisoft\Db\Query\Query;
 use Yiisoft\Db\Query\QueryBuilderInterface;
 use Yiisoft\Db\Schema\QuoterInterface;
 use Yiisoft\Db\Schema\SchemaInterface;
+use Yiisoft\Db\Transaction\TransactionInterface;
 
 use function array_map;
 use function call_user_func_array;
@@ -90,8 +92,8 @@ abstract class Command implements CommandInterface
     protected ?PDOStatement $pdoStatement = null;
     protected array $pendingParams = [];
     protected ?string $refreshTableName = null;
-    /** @var callable */
-    protected $retryHandler;
+    /** @var callable|null */
+    protected $retryHandler = null;
     private int $fetchMode = PDO::FETCH_ASSOC;
     private ?int $queryCacheDuration = null;
     private ?string $sql = null;
@@ -738,7 +740,7 @@ abstract class Command implements CommandInterface
      *
      * @param string|null $isolationLevel The isolation level to use for this transaction.
      *
-     * {@see Transaction::begin()} for details.
+     * {@see TransactionInterface::begin()} for details.
      *
      * @return static
      */

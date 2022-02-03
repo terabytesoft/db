@@ -8,9 +8,8 @@ use Yiisoft\Db\Schema\QuoterInterface;
 
 final class DDLCommand
 {
-    public function __construct(QuoterInterface $quoter)
+    public function __construct(private QuoterInterface $quoter)
     {
-        $this->quoter = $quoter;
     }
 
     /**

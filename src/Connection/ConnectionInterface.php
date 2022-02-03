@@ -8,12 +8,14 @@ use Throwable;
 use Yiisoft\Cache\Dependency\Dependency;
 use Yiisoft\Db\Command\CommandInterface;
 use Yiisoft\Db\Exception\Exception;
+use Yiisoft\Db\Exception\InvalidCallException;
 use Yiisoft\Db\Exception\InvalidConfigException;
+use Yiisoft\Db\Exception\NotSupportedException;
 use Yiisoft\Db\Query\QueryBuilderInterface;
 use Yiisoft\Db\Schema\QuoterInterface;
 use Yiisoft\Db\Schema\SchemaInterface;
 use Yiisoft\Db\Schema\TableSchema;
-use Yiisoft\DB\Transaction\Transaction;
+use Yiisoft\Db\Transaction\TransactionInterface;
 
 use function version_compare;
 
@@ -32,13 +34,13 @@ interface ConnectionInterface
      *
      * @param string|null $isolationLevel The isolation level to use for this transaction.
      *
-     * {@see Transaction::begin()} for details.
+     * {@see TransactionInterface::begin()} for details.
      *
      * @throws Exception|InvalidConfigException|NotSupportedException|Throwable
      *
-     * @return Transaction The transaction initiated
+     * @return TransactionInterface The transaction initiated
      */
-    public function beginTransaction(string $isolationLevel = null): Transaction;
+    public function beginTransaction(string $isolationLevel = null): TransactionInterface;
 
     /**
      * Uses query cache for the queries performed with the callable.
@@ -87,6 +89,11 @@ interface ConnectionInterface
      * @return CommandInterface
      */
     public function createCommand(?string $sql = null, array $params = []): CommandInterface;
+
+    /**
+     * Create a transaction instance.
+     */
+    public function createTransaction(): TransactionInterface;
 
     /**
      * Closes the currently active DB connection.
@@ -188,9 +195,9 @@ interface ConnectionInterface
     /**
      * Returns the currently active transaction.
      *
-     * @return Transaction|null the currently active transaction. Null if no active transaction.
+     * @return TransactionInterface|null the currently active transaction. Null if no active transaction.
      */
-    public function getTransaction(): ?Transaction;
+    public function getTransaction(): ?TransactionInterface;
 
     /**
      * Returns a value indicating whether the DB connection is established.
@@ -308,8 +315,8 @@ interface ConnectionInterface
      * Executes callback provided in a transaction.
      *
      * @param callable $callback A valid PHP callback that performs the job. Accepts connection instance as parameter.
-     * @param string|null $isolationLevel The isolation level to use for this transaction. {@see Transaction::begin()}
-     * for details.
+     * @param string|null $isolationLevel The isolation level to use for this transaction.
+     * {@see TransactionInterface::begin()} for details.
      *
      *@throws Throwable If there is any exception during query. In this case the transaction will be rolled back.
      *

@@ -254,10 +254,10 @@ class Query implements QueryInterface, ExpressionInterface
      *
      * @throws Exception|InvalidConfigException|Throwable
      *
-     * @return false|string|null the value of the first column in the first row of the query result. False is returned
-     * if the query result is empty.
+     * @return false|int|null|string the value of the first column in the first row of the query result. False is
+     * returned if the query result is empty.
      */
-    public function scalar()
+    public function scalar(): false|int|null|string
     {
         if ($this->emulateExecution) {
             return null;
@@ -426,9 +426,9 @@ class Query implements QueryInterface, ExpressionInterface
      *
      * @throws Exception|InvalidConfigException|Throwable
      *
-     * @return bool|string
+     * @return false|int|null|string
      */
-    protected function queryScalar($selectExpression)
+    protected function queryScalar($selectExpression): false|int|null|string
     {
         if ($this->emulateExecution) {
             return null;

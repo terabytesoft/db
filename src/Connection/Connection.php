@@ -17,7 +17,7 @@ use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Exception\NotSupportedException;
 use Yiisoft\Db\Query\QueryBuilder;
 use Yiisoft\Db\Schema\TableSchema;
-use Yiisoft\Db\Transaction\Transaction;
+use Yiisoft\Db\Transaction\TransactionInterface;
 
 use function array_keys;
 use function str_replace;
@@ -31,7 +31,7 @@ abstract class Connection implements ConnectionInterface
     protected array $slaves = [];
     protected ?ConnectionInterface $master = null;
     protected ?ConnectionInterface $slave = null;
-    protected ?Transaction $transaction = null;
+    protected ?TransactionInterface $transaction = null;
     private ?bool $emulatePrepare = null;
     private bool $enableSavepoint = true;
     private bool $enableSlaves = true;
@@ -48,20 +48,22 @@ abstract class Connection implements ConnectionInterface
         return $this->enableSlaves;
     }
 
-    public function beginTransaction(string $isolationLevel = null): Transaction
+    public function beginTransaction(string $isolationLevel = null): TransactionInterface
     {
         $this->open();
+        $this->transaction = $this->getTransaction();
 
-        if (($transaction = $this->getTransaction()) === null) {
-            $transaction = $this->transaction = new Transaction($this);
-            if ($this->logger !== null) {
-                $transaction->setLogger($this->logger);
-            }
+        if ($this->transaction === null) {
+            $this->transaction = $this->createTransaction($this);
         }
 
-        $transaction->begin($isolationLevel);
+        if ($this->logger !== null) {
+            $this->transaction->setLogger($this->logger);
+        }
 
-        return $transaction;
+        $this->transaction->begin($isolationLevel);
+
+        return $this->transaction;
     }
 
     public function cache(callable $callable, int $duration = null, Dependency $dependency = null): mixed
@@ -123,7 +125,7 @@ abstract class Connection implements ConnectionInterface
         return $this->getSchema()->getTableSchema($name, $refresh);
     }
 
-    public function getTransaction(): ?Transaction
+    public function getTransaction(): ?TransactionInterface
     {
         return $this->transaction && $this->transaction->isActive() ? $this->transaction : null;
     }
@@ -291,14 +293,14 @@ abstract class Connection implements ConnectionInterface
     }
 
     /**
-     * Rolls back given {@see Transaction} object if it's still active and level match. In some cases rollback can fail,
-     * so this method is fail-safe. Exceptions thrown from rollback will be caught and just logged with
+     * Rolls back given {@see TransactionInterface} object if it's still active and level match. In some cases rollback
+     * can fail, so this method is fail-safe. Exceptions thrown from rollback will be caught and just logged with
      * {@see logger->log()}.
      *
-     * @param Transaction $transaction Transaction object given from {@see beginTransaction()}.
-     * @param int $level Transaction level just after {@see beginTransaction()} call.
+     * @param TransactionInterface $transaction TransactionInterface object given from {@see beginTransaction()}.
+     * @param int $level TransactionInterface level just after {@see beginTransaction()} call.
      */
-    private function rollbackTransactionOnLevel(Transaction $transaction, int $level): void
+    private function rollbackTransactionOnLevel(TransactionInterface $transaction, int $level): void
     {
         if ($transaction->isActive() && $transaction->getLevel() === $level) {
             /**
