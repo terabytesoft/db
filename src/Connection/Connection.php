@@ -4,23 +4,16 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Connection;
 
+use PDOException;
 use Psr\Log\LogLevel;
 use Throwable;
 use Yiisoft\Cache\Dependency\Dependency;
 use Yiisoft\Db\AwareTrait\LoggerAwareTrait;
 use Yiisoft\Db\AwareTrait\ProfilerAwareTrait;
 use Yiisoft\Db\Cache\QueryCache;
-use Yiisoft\Db\Command\Command;
 use Yiisoft\Db\Exception\Exception;
-use Yiisoft\Db\Exception\InvalidCallException;
-use Yiisoft\Db\Exception\InvalidConfigException;
-use Yiisoft\Db\Exception\NotSupportedException;
-use Yiisoft\Db\Query\QueryBuilder;
 use Yiisoft\Db\Schema\TableSchema;
 use Yiisoft\Db\Transaction\TransactionInterface;
-
-use function array_keys;
-use function str_replace;
 
 abstract class Connection implements ConnectionInterface
 {
@@ -54,7 +47,7 @@ abstract class Connection implements ConnectionInterface
         $this->transaction = $this->getTransaction();
 
         if ($this->transaction === null) {
-            $this->transaction = $this->createTransaction($this);
+            $this->transaction = $this->createTransaction();
         }
 
         if ($this->logger !== null) {
@@ -308,7 +301,7 @@ abstract class Connection implements ConnectionInterface
              */
             try {
                 $transaction->rollBack();
-            } catch (Exception $e) {
+            } catch (PDOException $e) {
                 if ($this->logger !== null) {
                     $this->logger->log(LogLevel::ERROR, $e, [__METHOD__]);
                     /** hide this exception to be able to continue throwing original exception outside */

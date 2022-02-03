@@ -216,7 +216,7 @@ abstract class Command implements CommandInterface
         return $this;
     }
 
-    public function bindParam($name, &$value, ?int $dataType = null, ?int $length = null, $driverOptions = null): self
+    public function bindParam(int|string $name, mixed &$value, ?int $dataType = null, ?int $length = null, mixed $driverOptions = null): self
     {
         $this->prepare();
 
@@ -237,7 +237,7 @@ abstract class Command implements CommandInterface
         return $this;
     }
 
-    public function bindValue($name, $value, ?int $dataType = null): self
+    public function bindValue(int|string $name, mixed $value, ?int $dataType = null): self
     {
         if ($dataType === null) {
             $dataType = $this->schema->getPdoType($value);

@@ -184,15 +184,21 @@ interface CommandInterface
      * @param int|null $dataType SQL data type of the parameter. If null, the type is determined by the PHP type of the
      * value.
      * @param int|null $length Length of the data type.
-     * @param mixed $driverOptions The driver-specific options.
-     *
-     * @throws Exception
+     * @param mixed|null $driverOptions The driver-specific options.
      *
      * @return static The current command being executed.
      *
+     * @throws Exception
+     *
      * @link http://www.php.net/manual/en/function.PDOStatement-bindParam.php
      */
-    public function bindParam($name, &$value, ?int $dataType = null, ?int $length = null, $driverOptions = null): self;
+    public function bindParam(
+        int|string $name,
+        mixed &$value,
+        ?int $dataType = null,
+        ?int $length = null,
+        mixed $driverOptions = null
+    ): self;
 
     /**
      * Binds a value to a parameter.
@@ -208,7 +214,7 @@ interface CommandInterface
      *
      * @link http://www.php.net/manual/en/function.PDOStatement-bindValue.php
      */
-    public function bindValue($name, $value, ?int $dataType = null): self;
+    public function bindValue(int|string $name, mixed $value, ?int $dataType = null): self;
 
     /**
      * Binds a list of values to the corresponding parameters.

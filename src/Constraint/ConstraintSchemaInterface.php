@@ -89,7 +89,7 @@ interface ConstraintSchemaInterface
     public function getSchemaUniques(string $schema = '', bool $refresh = false): array;
 
     /**
-     * Obtains the check constraints information for the named table.
+     * Obtains the check constraints' information for the named table.
      *
      * @param string $name Table name. The table name may contain schema name if any. Do not quote the table name.
      * @param bool $refresh Whether to reload the information even if it is found in the cache.
@@ -109,7 +109,7 @@ interface ConstraintSchemaInterface
     public function getTableDefaultValues(string $name, bool $refresh = false): array;
 
     /**
-     * Obtains the foreign keys information for the named table.
+     * Obtains the foreign keys' information for the named table.
      *
      * @param string $name Table name. The table name may contain schema name if any. Do not quote the table name.
      * @param bool $refresh Whether to reload the information even if it is found in the cache.
@@ -119,7 +119,7 @@ interface ConstraintSchemaInterface
     public function getTableForeignKeys(string $name, bool $refresh = false): array;
 
     /**
-     * Obtains the indexes information for the named table.
+     * Obtains the indexes' information for the named table.
      *
      * @param string $name Table name. The table name may contain schema name if any. Do not quote the table name.
      * @param bool $refresh Whether to reload the information even if it is found in the cache.
@@ -139,7 +139,7 @@ interface ConstraintSchemaInterface
     public function getTablePrimaryKey(string $name, bool $refresh = false): ?Constraint;
 
     /**
-     * Obtains the unique constraints information for the named table.
+     * Obtains the unique constraints' information for the named table.
      *
      * @param string $name Table name. The table name may contain schema name if any. Do not quote the table name.
      * @param bool $refresh Whether to reload the information even if it is found in the cache.

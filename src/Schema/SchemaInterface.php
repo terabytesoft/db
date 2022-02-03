@@ -24,6 +24,15 @@ interface SchemaInterface extends ConstraintSchemaInterface
     public function convertException(\Exception $e, string $rawSql): Exception;
 
     /**
+     * Creates a new savepoint.
+     *
+     * @param string $name the savepoint name
+     *
+     * @throws Exception|InvalidConfigException|Throwable
+     */
+    public function createSavepoint(string $name): void;
+
+    /**
      * Return default schema name.
      */
     public function getDefaultSchema(): ?string;
@@ -134,6 +143,15 @@ interface SchemaInterface extends ConstraintSchemaInterface
      * @param string $name Table name.
      */
     public function refreshTableSchema(string $name): void;
+
+    /**
+     * Releases an existing savepoint.
+     *
+     * @param string $name the savepoint name
+     *
+     * @throws Exception|InvalidConfigException|Throwable
+     */
+    public function releaseSavepoint(string $name): void;
 
     /**
      * Rolls back to a previously created savepoint.

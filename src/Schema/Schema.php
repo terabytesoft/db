@@ -6,36 +6,18 @@ namespace Yiisoft\Db\Schema;
 
 use PDO;
 use PDOException;
-use Throwable;
 use Yiisoft\Cache\Dependency\TagDependency;
 use Yiisoft\Db\Cache\SchemaCache;
-use Yiisoft\Db\Connection\ConnectionInterface;
 use Yiisoft\Db\Constraint\Constraint;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\IntegrityException;
-use Yiisoft\Db\Exception\InvalidCallException;
-use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Exception\NotSupportedException;
 
-use function addcslashes;
-use function array_change_key_case;
 use function array_key_exists;
-use function array_map;
-use function explode;
 use function gettype;
-use function implode;
 use function is_array;
-use function is_string;
-use function md5;
 use function preg_match;
-use function preg_replace;
-use function serialize;
-use function str_replace;
-use function strlen;
-use function strpos;
-use function substr;
 use function ucfirst;
-use function version_compare;
 
 abstract class Schema implements SchemaInterface
 {
@@ -186,7 +168,7 @@ abstract class Schema implements SchemaInterface
         $exceptionClass = Exception::class;
 
         foreach ($this->exceptionMap as $error => $class) {
-            if (strpos($e->getMessage(), $error) !== false) {
+            if (str_contains($e->getMessage(), $error)) {
                 $exceptionClass = $class;
             }
         }
@@ -223,21 +205,33 @@ abstract class Schema implements SchemaInterface
         return $this->schemaCache;
     }
 
+    /**
+     * @throws NotSupportedException
+     */
     public function getSchemaChecks(string $schema = '', bool $refresh = false): array
     {
         return $this->getSchemaMetadata($schema, 'checks', $refresh);
     }
 
+    /**
+     * @throws NotSupportedException
+     */
     public function getSchemaDefaultValues(string $schema = '', bool $refresh = false): array
     {
         return $this->getSchemaMetadata($schema, 'defaultValues', $refresh);
     }
 
+    /**
+     * @throws NotSupportedException
+     */
     public function getSchemaForeignKeys(string $schema = '', bool $refresh = false): array
     {
         return $this->getSchemaMetadata($schema, 'foreignKeys', $refresh);
     }
 
+    /**
+     * @throws NotSupportedException
+     */
     public function getSchemaIndexes(string $schema = '', bool $refresh = false): array
     {
         return $this->getSchemaMetadata($schema, 'indexes', $refresh);
@@ -252,11 +246,17 @@ abstract class Schema implements SchemaInterface
         return $this->schemaNames;
     }
 
+    /**
+     * @throws NotSupportedException
+     */
     public function getSchemaPrimaryKeys(string $schema = '', bool $refresh = false): array
     {
         return $this->getSchemaMetadata($schema, 'primaryKey', $refresh);
     }
 
+    /**
+     * @throws NotSupportedException
+     */
     public function getSchemaUniques(string $schema = '', bool $refresh = false): array
     {
         return $this->getSchemaMetadata($schema, 'uniques', $refresh);
@@ -426,9 +426,6 @@ abstract class Schema implements SchemaInterface
     /**
      * Returns the metadata of the given type for all tables in the given schema.
      *
-     * This method will call a `'getTable' . ucfirst($type)` named method with the table name and the refresh flag to
-     * obtain the metadata.
-     *
      * @param string $schema the schema of the metadata. Defaults to empty string, meaning the current or default schema
      * name.
      * @param string $type metadata type.
@@ -470,7 +467,7 @@ abstract class Schema implements SchemaInterface
      *
      * @return mixed metadata.
      */
-    protected function getTableMetadata(string $name, string $type, bool $refresh = false)
+    protected function getTableMetadata(string $name, string $type, bool $refresh = false): mixed
     {
         $rawName = $this->getRawTableName($name);
 
@@ -493,10 +490,13 @@ abstract class Schema implements SchemaInterface
      * @param string $name
      * @param bool $refresh
      *
-     * @return mixed
+     * @return Constraint|array|TableSchema|null
      */
-    protected function getTableTypeMetadata(string $type, string $name, bool $refresh = false)
-    {
+    protected function getTableTypeMetadata(
+        string $type,
+        string $name,
+        bool $refresh = false
+    ): Constraint|array|null|TableSchema {
         return match ($type) {
             self::SCHEMA => $this->getTableSchema($name, $refresh),
             self::PRIMARY_KEY => $this->getTablePrimaryKey($name, $refresh),
@@ -532,7 +532,7 @@ abstract class Schema implements SchemaInterface
      * @param string $type metadata type.
      * @param mixed $data metadata.
      */
-    protected function setTableMetadata(string $name, string $type, $data): void
+    protected function setTableMetadata(string $name, string $type, mixed $data): void
     {
         $this->tableMetadata[$this->getRawTableName($name)][$type] = $data;
     }

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Connection;
 
-use Exception;
 use PDO;
 use Yiisoft\Db\Driver\PDODriver;
+use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\InvalidConfigException;
 
 interface ConnectionPDOInterface extends ConnectionInterface
@@ -48,8 +48,8 @@ interface ConnectionPDOInterface extends ConnectionInterface
      *
      * @throws Exception
      *
-     * @return PDO the PDO instance for the currently active slave connection. `null` is returned if no slave connection
-     * is available and `$fallbackToMaster` is false.
+     * @return PDO|null the PDO instance for the currently active slave connection. `null` is returned if no slave
+     * connection is available and `$fallbackToMaster` is false.
      */
     public function getSlavePDO(bool $fallbackToMaster = true): ?PDO;
 }
