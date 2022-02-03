@@ -90,11 +90,6 @@ abstract class Connection implements ConnectionInterface
         return $this->master;
     }
 
-    public function getServerVersion(): string
-    {
-        return $this->getSchema()->getServerVersion();
-    }
-
     public function getSlave(bool $fallbackToMaster = true): ?self
     {
         if (!$this->enableSlaves) {
