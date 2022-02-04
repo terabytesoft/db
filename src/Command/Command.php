@@ -147,13 +147,13 @@ abstract class Command implements CommandInterface
 
     public function addCommentOnColumn(string $table, string $column, string $comment): self
     {
-        $sql = $this->queryBuilder->addCommentOnColumn($table, $column, $comment);
+        $sql = $this->getDDLCommand()->addCommentOnColumn($table, $column, $comment);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function addCommentOnTable(string $table, string $comment): self
     {
-        $sql = $this->queryBuilder->addCommentOnTable($table, $comment);
+        $sql = $this->getDDLCommand()->addCommentOnTable($table, $comment);
         return $this->setSql($sql);
     }
 
@@ -330,13 +330,13 @@ abstract class Command implements CommandInterface
 
     public function dropCommentFromColumn(string $table, string $column): self
     {
-        $sql = $this->queryBuilder->dropCommentFromColumn($table, $column);
+        $sql = $this->getDDLCommand()->dropCommentFromColumn($table, $column);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function dropCommentFromTable(string $table): self
     {
-        $sql = $this->queryBuilder->dropCommentFromTable($table);
+        $sql = $this->getDDLCommand()->dropCommentFromTable($table);
         return $this->setSql($sql);
     }
 
@@ -782,10 +782,5 @@ abstract class Command implements CommandInterface
     {
         $this->retryHandler = $handler;
         return $this;
-    }
-
-    private function getDDLCommand(): DDLCommand
-    {
-        return new DDLCommand($this->quoter);
     }
 }

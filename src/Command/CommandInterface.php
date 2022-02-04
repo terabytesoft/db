@@ -487,6 +487,11 @@ interface CommandInterface
     public function executeResetSequence(string $table, mixed $value = null): self;
 
     /**
+     * Return DDL sql for command instance.
+     */
+    public function getDDLCommand(): DDLCommand;
+
+    /**
      * Return fetch mode.
      */
     public function getFetchMode(): int;
