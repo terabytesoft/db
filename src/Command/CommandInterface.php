@@ -492,6 +492,11 @@ interface CommandInterface
     public function getDDLCommand(): DDLCommand;
 
     /**
+     * Return DML sql for command instance.
+     */
+    public function getDMLCommand(): DMLCommand;
+
+    /**
      * Return fetch mode.
      */
     public function getFetchMode(): int;

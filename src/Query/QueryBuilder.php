@@ -158,26 +158,6 @@ abstract class QueryBuilder implements QueryBuilderInterface
     }
 
     /**
-     * Creates a SQL command for adding a default value constraint to an existing table.
-     *
-     * @param string $name the name of the default value constraint.
-     * The name will be properly quoted by the method.
-     * @param string $table the table that the default value constraint will be added to.
-     * The name will be properly quoted by the method.
-     * @param string $column the name of the column to that the constraint will be added on.
-     * The name will be properly quoted by the method.
-     * @param mixed $value default value.
-     *
-     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
-     *
-     * @return string the SQL statement for adding a default value constraint to an existing table.
-     */
-    public function addDefaultValue(string $name, string $table, string $column, $value): string
-    {
-        throw new NotSupportedException(static::class . ' does not support adding default value constraints.');
-    }
-
-    /**
      * Builds a SQL statement for adding a foreign key constraint to an existing table. The method will properly quote
      * the table and column names.
      *
@@ -1075,23 +1055,6 @@ abstract class QueryBuilder implements QueryBuilderInterface
     }
 
     /**
-     * Creates a SQL command for dropping a default value constraint.
-     *
-     * @param string $name the name of the default value constraint to be dropped.
-     * The name will be properly quoted by the method.
-     * @param string $table the table whose default value constraint is to be dropped.
-     * The name will be properly quoted by the method.
-     *
-     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
-     *
-     * @return string the SQL statement for dropping a default value constraint.
-     */
-    public function dropDefaultValue(string $name, string $table): string
-    {
-        throw new NotSupportedException(static::class . ' does not support dropping default value constraints.');
-    }
-
-    /**
      * Builds a SQL statement for dropping a foreign key constraint.
      *
      * @param string $name the name of the foreign key constraint to be dropped. The name will be properly quoted by
@@ -1356,25 +1319,6 @@ abstract class QueryBuilder implements QueryBuilderInterface
     {
         return 'RENAME TABLE ' . $this->quoter->quoteTableName($oldName) .
             ' TO ' . $this->quoter->quoteTableName($newName);
-    }
-
-    /**
-     * Creates a SQL statement for resetting the sequence value of a table's primary key.
-     *
-     * The sequence will be reset such that the primary key of the next new row inserted will have the specified value
-     * or 1.
-     *
-     * @param string $tableName the name of the table whose primary key sequence will be reset.
-     * @param array|int|string|null $value the value for the primary key of the next new row inserted. If this is not
-     * set, the next new row's primary key will have a value 1.
-     *
-     * @throws Exception|NotSupportedException if this is not supported by the underlying DBMS.
-     *
-     * @return string the SQL statement for resetting sequence.
-     */
-    public function resetSequence(string $tableName, array|int|string|null $value = null): string
-    {
-        throw new NotSupportedException(static::class . ' does not support resetting sequence.');
     }
 
     /**

@@ -17,6 +17,7 @@ use Yiisoft\Db\Cache\QueryCache;
 use Yiisoft\Db\Connection\ConnectionInterface;
 use Yiisoft\Db\Data\DataReader;
 use Yiisoft\Db\Exception\Exception;
+use Yiisoft\Db\Exception\NotSupportedException;
 use Yiisoft\Db\Expression\Expression;
 use Yiisoft\Db\Pdo\PdoValue;
 use Yiisoft\Db\Query\Query;
@@ -145,21 +146,30 @@ abstract class Command implements CommandInterface
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
+    /**
+     * @throws \Exception
+     */
     public function addCommentOnColumn(string $table, string $column, string $comment): self
     {
         $sql = $this->getDDLCommand()->addCommentOnColumn($table, $column, $comment);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
+    /**
+     * @throws \Exception
+     */
     public function addCommentOnTable(string $table, string $comment): self
     {
         $sql = $this->getDDLCommand()->addCommentOnTable($table, $comment);
         return $this->setSql($sql);
     }
 
+    /**
+     * @throws NotSupportedException
+     */
     public function addDefaultValue(string $name, string $table, string $column, mixed $value): self
     {
-        $sql = $this->queryBuilder->addDefaultValue($name, $table, $column, $value);
+        $sql = $this->getDDLCommand()->addDefaultValue($name, $table, $column, $value);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
@@ -340,9 +350,12 @@ abstract class Command implements CommandInterface
         return $this->setSql($sql);
     }
 
+    /**
+     * @throws NotSupportedException
+     */
     public function dropDefaultValue(string $name, string $table): self
     {
-        $sql = $this->queryBuilder->dropDefaultValue($name, $table);
+        $sql = $this->getDDLCommand()->dropDefaultValue($name, $table);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
@@ -422,6 +435,9 @@ abstract class Command implements CommandInterface
         }
     }
 
+    /**
+     * @throws NotSupportedException
+     */
     public function executeResetSequence(string $table, mixed $value = null): self
     {
         return $this->resetSequence($table, $value);
@@ -442,6 +458,9 @@ abstract class Command implements CommandInterface
         return $this->pdoStatement;
     }
 
+    /**
+     * @throws \Exception
+     */
     public function getRawSql(): string
     {
         if (empty($this->params)) {
@@ -540,9 +559,12 @@ abstract class Command implements CommandInterface
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
+    /**
+     * @throws NotSupportedException
+     */
     public function resetSequence(string $table, mixed $value = null): self
     {
-        $sql = $this->queryBuilder->resetSequence($table, $value);
+        $sql = $this->getDMLCommand()->resetSequence($table, $value);
         return $this->setSql($sql);
     }
 
@@ -617,6 +639,8 @@ abstract class Command implements CommandInterface
      * enabled.
      *
      * @param string $category The log category.
+     *
+     * @throws \Exception
      *
      * @return array Two elements, the first is boolean of whether profiling is enabled or not. The second is
      * the rawSql if it has been created.
@@ -774,11 +798,11 @@ abstract class Command implements CommandInterface
      * The callable will receive a database exception thrown and a current attempt (to execute the command) number
      * starting from 1.
      *
-     * @param callable $handler A PHP callback to handle database exceptions.
+     * @param callable|null $handler A PHP callback to handle database exceptions.
      *
      * @return static
      */
-    protected function setRetryHandler(callable $handler): self
+    protected function setRetryHandler(?callable $handler): self
     {
         $this->retryHandler = $handler;
         return $this;
