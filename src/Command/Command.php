@@ -506,7 +506,7 @@ abstract class Command implements CommandInterface
     public function insert(string $table, Query|array $columns): self
     {
         $params = [];
-        $sql = $this->queryBuilder->insert($table, $columns, $params);
+        $sql = $this->getDMLCommand()->insert($table, $columns, $params);
         return $this->setSql($sql)->bindValues($params);
     }
 
@@ -606,7 +606,7 @@ abstract class Command implements CommandInterface
 
     public function update(string $table, array $columns, array|string $condition = '', array $params = []): self
     {
-        $sql = $this->queryBuilder->update($table, $columns, $condition, $params);
+        $sql = $this->getDMLCommand()->update($table, $columns, $condition, $params);
         return $this->setSql($sql)->bindValues($params);
     }
 
@@ -616,7 +616,7 @@ abstract class Command implements CommandInterface
         bool|array $updateColumns = true,
         array $params = []
     ): self {
-        $sql = $this->queryBuilder->upsert($table, $insertColumns, $updateColumns, $params);
+        $sql = $this->getDMLCommand()->upsert($table, $insertColumns, $updateColumns, $params);
         return $this->setSql($sql)->bindValues($params);
     }
 
