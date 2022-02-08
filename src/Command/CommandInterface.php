@@ -11,6 +11,7 @@ use Yiisoft\Db\Cache\QueryCache;
 use Yiisoft\Db\Data\DataReader;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Query\Query;
+use Yiisoft\Db\Query\QueryBuilderInterface;
 
 interface CommandInterface
 {
@@ -266,6 +267,11 @@ interface CommandInterface
     public function checkIntegrity(string $schema, string $table, bool $check = true): self;
 
     /**
+     * Create query builder instance.
+     */
+    public function queryBuilder(): QueryBuilderInterface;
+
+    /**
      * Creates a SQL command for creating a new index.
      *
      * @param string $name The name of the index. The name will be properly quoted by the method.
@@ -485,16 +491,6 @@ interface CommandInterface
      * @return static
      */
     public function executeResetSequence(string $table, mixed $value = null): self;
-
-    /**
-     * Return DDL sql for command instance.
-     */
-    public function getDDLCommand(): DDLCommand;
-
-    /**
-     * Return DML sql for command instance.
-     */
-    public function getDMLCommand(): DMLCommand;
 
     /**
      * Return fetch mode.

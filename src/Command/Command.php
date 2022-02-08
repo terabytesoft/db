@@ -17,13 +17,12 @@ use Yiisoft\Db\Cache\QueryCache;
 use Yiisoft\Db\Connection\ConnectionInterface;
 use Yiisoft\Db\Data\DataReader;
 use Yiisoft\Db\Exception\Exception;
+use Yiisoft\Db\Exception\InvalidArgumentException;
+use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Exception\NotSupportedException;
 use Yiisoft\Db\Expression\Expression;
 use Yiisoft\Db\Pdo\PdoValue;
 use Yiisoft\Db\Query\Query;
-use Yiisoft\Db\Query\QueryBuilderInterface;
-use Yiisoft\Db\Schema\QuoterInterface;
-use Yiisoft\Db\Schema\SchemaInterface;
 use Yiisoft\Db\Transaction\TransactionInterface;
 
 use function array_map;
@@ -100,12 +99,8 @@ abstract class Command implements CommandInterface
     private ?string $sql = null;
     private ?Dependency $queryCacheDependency = null;
 
-    public function __construct(
-        private QueryBuilderInterface $queryBuilder,
-        private QueryCache $queryCache,
-        private QuoterInterface $quoter,
-        private SchemaInterface $schema
-    ) {
+    public function __construct(private QueryCache $queryCache)
+    {
     }
 
     /**
@@ -136,13 +131,13 @@ abstract class Command implements CommandInterface
 
     public function addCheck(string $name, string $table, string $expression): self
     {
-        $sql = $this->getDDLCommand()->addCheck($name, $table, $expression);
+        $sql = $this->queryBuilder()->addCheck($name, $table, $expression);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function addColumn(string $table, string $column, string $type): self
     {
-        $sql = $this->queryBuilder->addColumn($table, $column, $type);
+        $sql = $this->queryBuilder()->addColumn($table, $column, $type);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
@@ -151,7 +146,7 @@ abstract class Command implements CommandInterface
      */
     public function addCommentOnColumn(string $table, string $column, string $comment): self
     {
-        $sql = $this->getDDLCommand()->addCommentOnColumn($table, $column, $comment);
+        $sql = $this->queryBuilder()->addCommentOnColumn($table, $column, $comment);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
@@ -160,19 +155,22 @@ abstract class Command implements CommandInterface
      */
     public function addCommentOnTable(string $table, string $comment): self
     {
-        $sql = $this->getDDLCommand()->addCommentOnTable($table, $comment);
+        $sql = $this->queryBuilder()->addCommentOnTable($table, $comment);
         return $this->setSql($sql);
     }
 
     /**
-     * @throws NotSupportedException
+     * @throws Exception|NotSupportedException
      */
     public function addDefaultValue(string $name, string $table, string $column, mixed $value): self
     {
-        $sql = $this->getDDLCommand()->addDefaultValue($name, $table, $column, $value);
+        $sql = $this->queryBuilder()->addDefaultValue($name, $table, $column, $value);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
+    /**
+     * @throws Exception|InvalidArgumentException
+     */
     public function addForeignKey(
         string $name,
         string $table,
@@ -182,7 +180,7 @@ abstract class Command implements CommandInterface
         ?string $delete = null,
         ?string $update = null
     ): self {
-        $sql = $this->queryBuilder->addForeignKey(
+        $sql = $this->queryBuilder()->addForeignKey(
             $name,
             $table,
             $columns,
@@ -197,28 +195,31 @@ abstract class Command implements CommandInterface
 
     public function addPrimaryKey(string $name, string $table, array|string $columns): self
     {
-        $sql = $this->queryBuilder->addPrimaryKey($name, $table, $columns);
+        $sql = $this->queryBuilder()->addPrimaryKey($name, $table, $columns);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function addUnique(string $name, string $table, array|string $columns): self
     {
-        $sql = $this->queryBuilder->addUnique($name, $table, $columns);
+        $sql = $this->queryBuilder()->addUnique($name, $table, $columns);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function alterColumn(string $table, string $column, string $type): self
     {
-        $sql = $this->queryBuilder->alterColumn($table, $column, $type);
+        $sql = $this->queryBuilder()->alterColumn($table, $column, $type);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
+    /**
+     * @throws Exception|InvalidArgumentException
+     */
     public function batchInsert(string $table, array $columns, iterable $rows): self
     {
-        $table = $this->quoter->quoteSql($table);
-        $columns = array_map(fn ($column) => $this->quoter->quoteSql($column), $columns);
+        $table = $this->queryBuilder()->quoter()->quoteSql($table);
+        $columns = array_map(fn ($column) => $this->queryBuilder()->quoter()->quoteSql($column), $columns);
         $params = [];
-        $sql = $this->queryBuilder->batchInsert($table, $columns, $rows, $params);
+        $sql = $this->queryBuilder()->batchInsert($table, $columns, $rows, $params);
 
         $this->setRawSql($sql);
         $this->bindValues($params);
@@ -231,7 +232,7 @@ abstract class Command implements CommandInterface
         $this->prepare();
 
         if ($dataType === null) {
-            $dataType = $this->schema->getPdoType($value);
+            $dataType = $this->queryBuilder()->schema()->getPdoType($value);
         }
 
         if ($length === null) {
@@ -250,7 +251,7 @@ abstract class Command implements CommandInterface
     public function bindValue(int|string $name, mixed $value, ?int $dataType = null): self
     {
         if ($dataType === null) {
-            $dataType = $this->schema->getPdoType($value);
+            $dataType = $this->queryBuilder()->schema()->getPdoType($value);
         }
 
         $this->pendingParams[$name] = [$value, $dataType];
@@ -274,7 +275,7 @@ abstract class Command implements CommandInterface
                 $this->pendingParams[$name] = [$value->getValue(), $value->getType()];
                 $this->params[$name] = $value->getValue();
             } else {
-                $type = $this->schema->getPdoType($value);
+                $type = $this->queryBuilder()->schema()->getPdoType($value);
 
                 $this->pendingParams[$name] = [$value, $type];
                 $this->params[$name] = $value;
@@ -296,102 +297,114 @@ abstract class Command implements CommandInterface
         $this->pdoStatement = null;
     }
 
+    /**
+     * @throws Exception|NotSupportedException
+     */
     public function checkIntegrity(string $schema, string $table, bool $check = true): self
     {
-        $sql = $this->queryBuilder->checkIntegrity($schema, $table, $check);
+        $sql = $this->queryBuilder()->checkIntegrity($schema, $table, $check);
         return $this->setSql($sql);
     }
 
+    /**
+     * @throws Exception|InvalidArgumentException
+     */
     public function createIndex(string $name, string $table, array|string $columns, bool $unique = false): self
     {
-        $sql = $this->queryBuilder->createIndex($name, $table, $columns, $unique);
+        $sql = $this->queryBuilder()->createIndex($name, $table, $columns, $unique);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function createTable(string $table, array $columns, ?string $options = null): self
     {
-        $sql = $this->queryBuilder->createTable($table, $columns, $options);
+        $sql = $this->queryBuilder()->createTable($table, $columns, $options);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
+    /**
+     * @throws Exception|InvalidConfigException|NotSupportedException
+     */
     public function createView(string $viewName, Query|string $subquery): self
     {
-        $sql = $this->queryBuilder->createView($viewName, $subquery);
+        $sql = $this->queryBuilder()->createView($viewName, $subquery);
         return $this->setSql($sql)->requireTableSchemaRefresh($viewName);
     }
 
+    /**
+     * @throws Exception|InvalidArgumentException
+     */
     public function delete(string $table, array|string $condition = '', array $params = []): self
     {
-        $sql = $this->queryBuilder->delete($table, $condition, $params);
+        $sql = $this->queryBuilder()->delete($table, $condition, $params);
         return $this->setSql($sql)->bindValues($params);
     }
 
     public function dropCheck(string $name, string $table): self
     {
-        $sql = $this->getDDLCommand()->dropCheck($name, $table);
+        $sql = $this->queryBuilder()->dropCheck($name, $table);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function dropColumn(string $table, string $column): self
     {
-        $sql = $this->queryBuilder->dropColumn($table, $column);
+        $sql = $this->queryBuilder()->dropColumn($table, $column);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function dropCommentFromColumn(string $table, string $column): self
     {
-        $sql = $this->getDDLCommand()->dropCommentFromColumn($table, $column);
+        $sql = $this->queryBuilder()->dropCommentFromColumn($table, $column);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function dropCommentFromTable(string $table): self
     {
-        $sql = $this->getDDLCommand()->dropCommentFromTable($table);
+        $sql = $this->queryBuilder()->dropCommentFromTable($table);
         return $this->setSql($sql);
     }
 
     /**
-     * @throws NotSupportedException
+     * @throws Exception|NotSupportedException
      */
     public function dropDefaultValue(string $name, string $table): self
     {
-        $sql = $this->getDDLCommand()->dropDefaultValue($name, $table);
+        $sql = $this->queryBuilder()->dropDefaultValue($name, $table);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function dropForeignKey(string $name, string $table): self
     {
-        $sql = $this->queryBuilder->dropForeignKey($name, $table);
+        $sql = $this->queryBuilder()->dropForeignKey($name, $table);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function dropIndex(string $name, string $table): self
     {
-        $sql = $this->queryBuilder->dropIndex($name, $table);
+        $sql = $this->queryBuilder()->dropIndex($name, $table);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function dropPrimaryKey(string $name, string $table): self
     {
-        $sql = $this->queryBuilder->dropPrimaryKey($name, $table);
+        $sql = $this->queryBuilder()->dropPrimaryKey($name, $table);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function dropTable(string $table): self
     {
-        $sql = $this->queryBuilder->dropTable($table);
+        $sql = $this->queryBuilder()->dropTable($table);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function dropUnique(string $name, string $table): self
     {
-        $sql = $this->queryBuilder->dropUnique($name, $table);
+        $sql = $this->queryBuilder()->dropUnique($name, $table);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function dropView(string $viewName): self
     {
-        $sql = $this->queryBuilder->dropView($viewName);
+        $sql = $this->queryBuilder()->dropView($viewName);
         return $this->setSql($sql)->requireTableSchemaRefresh($viewName);
     }
 
@@ -436,7 +449,7 @@ abstract class Command implements CommandInterface
     }
 
     /**
-     * @throws NotSupportedException
+     * @throws Exception|NotSupportedException
      */
     public function executeResetSequence(string $table, mixed $value = null): self
     {
@@ -475,7 +488,7 @@ abstract class Command implements CommandInterface
             }
 
             if (is_string($value)) {
-                $params[$name] = $this->quoter->quoteValue($value);
+                $params[$name] = $this->queryBuilder()->quoter()->quoteValue($value);
             } elseif (is_bool($value)) {
                 $params[$name] = ($value ? 'TRUE' : 'FALSE');
             } elseif ($value === null) {
@@ -503,10 +516,13 @@ abstract class Command implements CommandInterface
         return $this->sql;
     }
 
+    /**
+     * @throws Exception|InvalidArgumentException|InvalidConfigException|NotSupportedException
+     */
     public function insert(string $table, Query|array $columns): self
     {
         $params = [];
-        $sql = $this->getDMLCommand()->insert($table, $columns, $params);
+        $sql = $this->queryBuilder()->insert($table, $columns, $params);
         return $this->setSql($sql)->bindValues($params);
     }
 
@@ -549,22 +565,22 @@ abstract class Command implements CommandInterface
 
     public function renameColumn(string $table, string $oldName, string $newName): self
     {
-        $sql = $this->queryBuilder->renameColumn($table, $oldName, $newName);
+        $sql = $this->queryBuilder()->renameColumn($table, $oldName, $newName);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     public function renameTable(string $table, string $newName): self
     {
-        $sql = $this->queryBuilder->renameTable($table, $newName);
+        $sql = $this->queryBuilder()->renameTable($table, $newName);
         return $this->setSql($sql)->requireTableSchemaRefresh($table);
     }
 
     /**
-     * @throws NotSupportedException
+     * @throws Exception|NotSupportedException
      */
     public function resetSequence(string $table, mixed $value = null): self
     {
-        $sql = $this->getDMLCommand()->resetSequence($table, $value);
+        $sql = $this->queryBuilder()->resetSequence($table, $value);
         return $this->setSql($sql);
     }
 
@@ -593,30 +609,36 @@ abstract class Command implements CommandInterface
     {
         $this->cancel();
         $this->reset();
-        $this->sql = $this->quoter->quoteSql($sql);
+        $this->sql = $this->queryBuilder()->quoter()->quoteSql($sql);
 
         return $this;
     }
 
     public function truncateTable(string $table): self
     {
-        $sql = $this->queryBuilder->truncateTable($table);
+        $sql = $this->queryBuilder()->truncateTable($table);
         return $this->setSql($sql);
     }
 
+    /**
+     * @throws Exception|InvalidArgumentException
+     */
     public function update(string $table, array $columns, array|string $condition = '', array $params = []): self
     {
-        $sql = $this->getDMLCommand()->update($table, $columns, $condition, $params);
+        $sql = $this->queryBuilder()->update($table, $columns, $condition, $params);
         return $this->setSql($sql)->bindValues($params);
     }
 
+    /**
+     * @throws Exception|JsonException|InvalidConfigException|NotSupportedException
+     */
     public function upsert(
         string $table,
         Query|array $insertColumns,
         bool|array $updateColumns = true,
         array $params = []
     ): self {
-        $sql = $this->getDMLCommand()->upsert($table, $insertColumns, $updateColumns, $params);
+        $sql = $this->queryBuilder()->upsert($table, $insertColumns, $updateColumns, $params);
         return $this->setSql($sql)->bindValues($params);
     }
 
@@ -742,7 +764,7 @@ abstract class Command implements CommandInterface
     protected function refreshTableSchema(): void
     {
         if ($this->refreshTableName !== null) {
-            $this->schema->refreshTableSchema($this->refreshTableName);
+            $this->queryBuilder()->schema()->refreshTableSchema($this->refreshTableName);
         }
     }
 

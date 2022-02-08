@@ -10,6 +10,7 @@ use Yiisoft\Db\Connection\ConnectionInterface;
 use Yiisoft\Db\Data\DataReader;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\IntegrityException;
+use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Expression\Expression;
 use Yiisoft\Db\Query\Query;
 use Yiisoft\Db\Schema\Schema;
@@ -24,57 +25,59 @@ use function time;
 
 trait TestCommandTrait
 {
+    /**
+     * @throws Exception|InvalidConfigException
+     */
     public function testConstruct(): void
     {
         $db = $this->getConnection();
 
         /* null */
         $command = $db->createCommand();
-
         $this->assertNull($command->getSql());
 
         /* string */
         $sql = 'SELECT * FROM customer';
-
         $command = $db->createCommand($sql);
-
         $this->assertEquals($sql, $command->getSql());
     }
 
+    /**
+     * @throws Exception|InvalidConfigException
+     */
     public function testGetSetSql(): void
     {
         $db = $this->getConnection();
 
         $sql = 'SELECT * FROM customer';
-
         $command = $db->createCommand($sql);
-
         $this->assertEquals($sql, $command->getSql());
 
         $sql2 = 'SELECT * FROM order';
-
         $command->setSql($sql2);
-
         $this->assertEquals($sql2, $command->getSql());
     }
 
+    /**
+     * @throws Exception|InvalidConfigException
+     */
     public function testPrepareCancel(): void
     {
         $db = $this->getConnection();
 
         $command = $db->createCommand('SELECT * FROM {{customer}}');
-
         $this->assertNull($command->getPdoStatement());
 
         $command->prepare();
-
         $this->assertNotNull($command->getPdoStatement());
 
         $command->cancel();
-
         $this->assertNull($command->getPdoStatement());
     }
 
+    /**
+     * @throws Exception|InvalidConfigException|Throwable
+     */
     public function testExecute(): void
     {
         $db = $this->getConnection(true);
@@ -83,104 +86,80 @@ trait TestCommandTrait
             . ' VALUES (\'user4@example.com\', \'user4\', \'address4\')';
 
         $command = $db->createCommand($sql);
-
         $this->assertEquals(1, $command->execute());
 
         $sql = 'SELECT COUNT(*) FROM {{customer}} WHERE [[name]] = \'user4\'';
-
         $command = $db->createCommand($sql);
-
         $this->assertEquals(1, $command->queryScalar());
 
         $command = $db->createCommand('bad SQL');
-
         $this->expectException(Exception::class);
-
         $command->execute();
     }
 
+    /**
+     * @throws Exception|InvalidConfigException|Throwable
+     */
     public function testQuery(): void
     {
         $db = $this->getConnection(true);
 
         /* query */
         $sql = 'SELECT * FROM {{customer}}';
-
         $reader = $db->createCommand($sql)->Query();
-
         $this->assertInstanceOf(DataReader::class, $reader);
 
         /* queryAll */
         $rows = $db->createCommand('SELECT * FROM {{customer}}')->queryAll();
-
         $this->assertCount(3, $rows);
 
         $row = $rows[2];
-
         $this->assertEquals(3, $row['id']);
         $this->assertEquals('user3', $row['name']);
 
         $rows = $db->createCommand('SELECT * FROM {{customer}} WHERE [[id]] = 10')->queryAll();
-
         $this->assertEquals([], $rows);
 
         /* queryOne */
         $sql = 'SELECT * FROM {{customer}} ORDER BY [[id]]';
-
         $row = $db->createCommand($sql)->queryOne();
-
         $this->assertEquals(1, $row['id']);
         $this->assertEquals('user1', $row['name']);
 
         $sql = 'SELECT * FROM {{customer}} ORDER BY [[id]]';
-
         $command = $db->createCommand($sql);
-
         $command->prepare();
-
         $row = $command->queryOne();
-
         $this->assertEquals(1, $row['id']);
         $this->assertEquals('user1', $row['name']);
 
         $sql = 'SELECT * FROM {{customer}} WHERE [[id]] = 10';
-
         $command = $db->createCommand($sql);
-
         $this->assertFalse($command->queryOne());
 
         /* queryColumn */
         $sql = 'SELECT * FROM {{customer}}';
-
         $column = $db->createCommand($sql)->queryColumn();
-
         $this->assertEquals(range(1, 3), $column);
 
         $command = $db->createCommand('SELECT [[id]] FROM {{customer}} WHERE [[id]] = 10');
-
         $this->assertEquals([], $command->queryColumn());
 
         /* queryScalar */
         $sql = 'SELECT * FROM {{customer}} ORDER BY [[id]]';
-
         $this->assertEquals($db->createCommand($sql)->queryScalar(), 1);
 
         $sql = 'SELECT [[id]] FROM {{customer}} ORDER BY [[id]]';
-
         $command = $db->createCommand($sql);
 
         $command->prepare();
-
         $this->assertEquals(1, $command->queryScalar());
 
         $command = $db->createCommand('SELECT [[id]] FROM {{customer}} WHERE [[id]] = 10');
-
         $this->assertFalse($command->queryScalar());
 
         $command = $db->createCommand('bad SQL');
-
         $this->expectException(Exception::class);
-
         $command->Query();
     }
 
@@ -218,12 +197,14 @@ trait TestCommandTrait
         $this->assertTrue(is_array($result) && isset($result[0]));
     }
 
+    /**
+     * @throws Exception|InvalidConfigException|Throwable
+     */
     public function testBatchInsert(): void
     {
         $db = $this->getConnection();
 
         $command = $db->createCommand();
-
         $command->batchInsert(
             '{{customer}}',
             ['email', 'name', 'address'],
@@ -232,23 +213,23 @@ trait TestCommandTrait
                 ['t2@example.com', null, false],
             ]
         );
-
         $this->assertEquals(2, $command->execute());
 
         /**
-         * {@see https://github.com/yiisoft/yii2/issues/11693}
+         * @link https://github.com/yiisoft/yii2/issues/11693
          */
         $command = $this->getConnection()->createCommand();
-
         $command->batchInsert(
             '{{customer}}',
             ['email', 'name', 'address'],
             []
         );
-
         $this->assertEquals(0, $command->execute());
     }
 
+    /**
+     * @throws Exception|InvalidConfigException|Throwable
+     */
     public function testBatchInsertWithYield(): void
     {
         $rows = (static function () {
@@ -256,15 +237,12 @@ trait TestCommandTrait
                 yield [];
             }
         })();
-
         $command = $this->getConnection()->createCommand();
-
         $command->batchInsert(
             '{{customer}}',
             ['email', 'name', 'address'],
             $rows
         );
-
         $this->assertEquals(0, $command->execute());
     }
 
@@ -273,7 +251,7 @@ trait TestCommandTrait
      *
      * Ensure double is inserted with `.` decimal separator.
      *
-     * {@see https://github.com/yiisoft/yii2/issues/6526}
+     * @link https://github.com/yiisoft/yii2/issues/6526
      */
     public function testBatchInsertDataTypesLocale(): void
     {
@@ -288,9 +266,7 @@ trait TestCommandTrait
         try {
             /* This one sets decimal mark to comma sign */
             setlocale(LC_NUMERIC, 'ru_RU.utf8');
-
             $cols = ['int_col', 'char_col', 'float_col', 'bool_col'];
-
             $data = [
                 [1, 'A', 9.735, true],
                 [2, 'B', -2.123, false],
@@ -307,12 +283,10 @@ trait TestCommandTrait
 
             /* batch insert on "type" table */
             $db->createCommand()->batchInsert('type', $cols, $data)->execute();
-
             $data = $db->createCommand(
                 'SELECT [[int_col]], [[char_col]], [[float_col]], [[bool_col]] ' .
                 'FROM {{type}} WHERE [[int_col]] IN (1,2,3) ORDER BY [[int_col]]'
             )->queryAll();
-
             $this->assertCount(3, $data);
             $this->assertEquals(1, $data[0]['int_col']);
             $this->assertEquals(2, $data[1]['int_col']);
@@ -328,27 +302,23 @@ trait TestCommandTrait
             $this->assertEquals('1', $data[0]['bool_col']);
             $this->assertIsOneOf($data[1]['bool_col'], ['0', false]);
             $this->assertIsOneOf($data[2]['bool_col'], ['0', false]);
-        } catch (Exception $e) {
+        } catch (Exception|Throwable $e) {
             setlocale(LC_NUMERIC, $locale);
-
-            throw $e;
-        } catch (Throwable $e) {
-            setlocale(LC_NUMERIC, $locale);
-
             throw $e;
         }
 
         setlocale(LC_NUMERIC, $locale);
     }
 
+    /**
+     * @throws Exception|InvalidConfigException|Throwable
+     */
     public function testInsert(): void
     {
         $db = $this->getConnection();
 
         $db->createCommand('DELETE FROM {{customer}}')->execute();
-
         $command = $db->createCommand();
-
         $command->insert(
             '{{customer}}',
             [
@@ -357,11 +327,9 @@ trait TestCommandTrait
                 'address' => 'test address',
             ]
         )->execute();
-
         $this->assertEquals(1, $db->createCommand('SELECT COUNT(*) FROM {{customer}};')->queryScalar());
 
         $record = $db->createCommand('SELECT [[email]], [[name]], [[address]] FROM {{customer}}')->queryOne();
-
         $this->assertEquals([
             'email' => 't1@example.com',
             'name' => 'test',
@@ -370,7 +338,7 @@ trait TestCommandTrait
     }
 
     /**
-     * verify that {{}} are not going to be replaced in parameters.
+     * Verify that {{}} are not going to be replaced in parameters.
      */
     public function testNoTablenameReplacement(): void
     {
@@ -392,7 +360,6 @@ trait TestCommandTrait
         }
 
         $customer = $db->createCommand('SELECT * FROM {{customer}} WHERE id=' . $customerId)->queryOne();
-
         $this->assertEquals('Some {{weird}} name', $customer['name']);
         $this->assertEquals('Some {{%weird}} address', $customer['address']);
 
@@ -404,9 +371,7 @@ trait TestCommandTrait
             ],
             ['id' => $customerId]
         )->execute();
-
         $customer = $db->createCommand('SELECT * FROM {{customer}} WHERE id=' . $customerId)->queryOne();
-
         $this->assertEquals('Some {{updated}} name', $customer['name']);
         $this->assertEquals('Some {{%updated}} address', $customer['address']);
     }
@@ -419,9 +384,7 @@ trait TestCommandTrait
         $db = $this->getConnection();
 
         $db->createCommand('DELETE FROM {{customer}}')->execute();
-
         $command = $db->createCommand();
-
         $command->insert(
             '{{customer}}',
             [
@@ -430,9 +393,7 @@ trait TestCommandTrait
                 'address' => 'test address',
             ]
         )->execute();
-
         $query = new Query($db);
-
         $query->select(
             [
                 '{{customer}}.[[email]] as name',
@@ -446,18 +407,14 @@ trait TestCommandTrait
                 ['<>', 'name', 'foo'],
                 ['status' => [0, 1, 2, 3]],
             ]);
-
         $command = $db->createCommand();
-
         $command->insert(
             '{{customer}}',
             $query
         )->execute();
-
         $this->assertEquals(2, $db->createCommand('SELECT COUNT(*) FROM {{customer}}')->queryScalar());
 
         $record = $db->createCommand('SELECT [[email]], [[name]], [[address]] FROM {{customer}}')->queryAll();
-
         $this->assertEquals([
             [
                 'email' => 't1@example.com',
@@ -480,9 +437,7 @@ trait TestCommandTrait
         $db = $this->getConnection();
 
         $db->createCommand('DELETE FROM {{customer}}')->execute();
-
         $command = $db->createCommand();
-
         $command->insert(
             '{{customer}}',
             [
@@ -491,9 +446,7 @@ trait TestCommandTrait
                 'address' => 'test address',
             ]
         )->execute();
-
         $query = new Query($db);
-
         $query->select(
             [
                 'email' => '{{customer}}.[[email]]',
@@ -507,18 +460,14 @@ trait TestCommandTrait
                 ['<>', 'name', 'foo'],
                 ['status' => [0, 1, 2, 3]],
             ]);
-
         $command = $db->createCommand();
-
         $command->insert(
             '{{customer}}',
             $query
         )->execute();
-
         $this->assertEquals(2, $db->createCommand('SELECT COUNT(*) FROM {{customer}}')->queryScalar());
 
         $record = $db->createCommand('SELECT [[email]], [[name]], [[address]] FROM {{customer}}')->queryAll();
-
         $this->assertEquals([
             [
                 'email' => 't1@example.com',
@@ -535,10 +484,10 @@ trait TestCommandTrait
 
     public function testInsertExpression(): void
     {
+        $expression = '';
         $db = $this->getConnection();
 
         $db->createCommand('DELETE FROM {{order_with_null_fk}}')->execute();
-
         switch ($db->getDriverName()) {
             case 'pgsql':
                 $expression = "EXTRACT(YEAR FROM TIMESTAMP 'now')";
@@ -552,9 +501,7 @@ trait TestCommandTrait
             case 'sqlsrv':
                 $expression = 'YEAR(GETDATE())';
         }
-
         $command = $db->createCommand();
-
         $command->insert(
             '{{order_with_null_fk}}',
             [
@@ -562,26 +509,19 @@ trait TestCommandTrait
                 'total' => 1,
             ]
         )->execute();
-
         $this->assertEquals(1, $db->createCommand('SELECT COUNT(*) FROM {{order_with_null_fk}}')->queryScalar());
 
         $record = $db->createCommand('SELECT [[created_at]] FROM {{order_with_null_fk}}')->queryOne();
-
-        $this->assertEquals([
-            'created_at' => date('Y'),
-        ], $record);
+        $this->assertEquals(['created_at' => date('Y')], $record);
     }
 
     public function testsInsertQueryAsColumnValue(): void
     {
         $time = time();
-
         $db = $this->getConnection(true);
 
         $db->createCommand('DELETE FROM {{order_with_null_fk}}')->execute();
-
         $command = $db->createCommand();
-
         $command->insert('{{order}}', [
             'customer_id' => 1,
             'created_at' => $time,
@@ -595,11 +535,8 @@ trait TestCommandTrait
         }
 
         $columnValueQuery = new Query($db);
-
         $columnValueQuery->select('created_at')->from('{{order}}')->where(['id' => $orderId]);
-
         $command = $db->createCommand();
-
         $command->insert(
             '{{order_with_null_fk}}',
             [
@@ -608,7 +545,6 @@ trait TestCommandTrait
                 'total' => 42,
             ]
         )->execute();
-
         $this->assertEquals(
             $time,
             $db->createCommand(
@@ -632,14 +568,9 @@ trait TestCommandTrait
             'testCreateTable',
             ['id' => Schema::TYPE_PK, 'bar' => Schema::TYPE_INTEGER]
         )->execute();
-
         $db->createCommand()->insert('testCreateTable', ['bar' => 1])->execute();
-
         $records = $db->createCommand('SELECT [[id]], [[bar]] FROM {{testCreateTable}};')->queryAll();
-
-        $this->assertEquals([
-            ['id' => 1, 'bar' => 1],
-        ], $records);
+        $this->assertEquals([['id' => 1, 'bar' => 1]], $records);
     }
 
     public function testDropTable(): void
@@ -647,11 +578,9 @@ trait TestCommandTrait
         $db = $this->getConnection();
 
         $tableName = 'type';
-
         $this->assertNotNull($db->getSchema()->getTableSchema($tableName));
 
         $db->createCommand()->dropTable($tableName)->execute();
-
         $this->assertNull($db->getSchema()->getTableSchema($tableName));
     }
 
@@ -660,13 +589,10 @@ trait TestCommandTrait
         $db = $this->getConnection();
 
         $rows = $db->createCommand('SELECT * FROM {{animal}}')->queryAll();
-
         $this->assertCount(2, $rows);
 
         $db->createCommand()->truncateTable('animal')->execute();
-
         $rows = $db->createCommand('SELECT * FROM {{animal}}')->queryAll();
-
         $this->assertCount(0, $rows);
     }
 
@@ -685,7 +611,6 @@ trait TestCommandTrait
         $this->assertNull($db->getSchema()->getTableSchema($toTableName));
 
         $db->createCommand()->renameTable($fromTableName, $toTableName)->execute();
-
         $this->assertNull($db->getSchema()->getTableSchema($fromTableName, true));
         $this->assertNotNull($db->getSchema()->getTableSchema($toTableName, true));
     }
@@ -696,9 +621,7 @@ trait TestCommandTrait
         $expected = $data['expected'] ?? $params[1];
 
         $command = $db->createCommand();
-
         call_user_func_array([$command, 'upsert'], $params);
-
         $command->execute();
 
         $actual = (new Query($db))
@@ -709,7 +632,6 @@ trait TestCommandTrait
             ])
             ->from('T_upsert')
             ->one();
-
         $this->assertEquals($expected, $actual, $this->upsertTestCharCast);
     }
 
@@ -734,16 +656,13 @@ trait TestCommandTrait
             'unique ([[int1]], [[int2]])',
             'unique ([[int3]], [[int4]])',
         ])->execute();
-
         $this->assertEmpty($schema->getTableForeignKeys($tableName, true));
 
         $db->createCommand()->addForeignKey($name, $tableName, ['int1'], $tableName, ['int3'])->execute();
-
         $this->assertEquals(['int1'], $schema->getTableForeignKeys($tableName, true)[0]->getColumnNames());
         $this->assertEquals(['int3'], $schema->getTableForeignKeys($tableName, true)[0]->getForeignColumnNames());
 
         $db->createCommand()->dropForeignKey($name, $tableName)->execute();
-
         $this->assertEmpty($schema->getTableForeignKeys($tableName, true));
 
         $db->createCommand()->addForeignKey(
@@ -753,7 +672,6 @@ trait TestCommandTrait
             $tableName,
             ['int3', 'int4']
         )->execute();
-
         $this->assertEquals(
             ['int1', 'int2'],
             $schema->getTableForeignKeys($tableName, true)[0]->getColumnNames()
@@ -781,39 +699,31 @@ trait TestCommandTrait
             'int1' => 'integer not null',
             'int2' => 'integer not null',
         ])->execute();
-
         $this->assertEmpty($schema->getTableIndexes($tableName, true));
 
         $db->createCommand()->createIndex($name, $tableName, ['int1'])->execute();
-
         $this->assertEquals(['int1'], $schema->getTableIndexes($tableName, true)[0]->getColumnNames());
         $this->assertFalse($schema->getTableIndexes($tableName, true)[0]->isUnique());
 
         $db->createCommand()->dropIndex($name, $tableName)->execute();
-
         $this->assertEmpty($schema->getTableIndexes($tableName, true));
 
         $db->createCommand()->createIndex($name, $tableName, ['int1', 'int2'])->execute();
-
         $this->assertEquals(['int1', 'int2'], $schema->getTableIndexes($tableName, true)[0]->getColumnNames());
         $this->assertFalse($schema->getTableIndexes($tableName, true)[0]->isUnique());
 
         $db->createCommand()->dropIndex($name, $tableName)->execute();
-
         $this->assertEmpty($schema->getTableIndexes($tableName, true));
         $this->assertEmpty($schema->getTableIndexes($tableName, true));
 
         $db->createCommand()->createIndex($name, $tableName, ['int1'], true)->execute();
-
         $this->assertEquals(['int1'], $schema->getTableIndexes($tableName, true)[0]->getColumnNames());
         $this->assertTrue($schema->getTableIndexes($tableName, true)[0]->isUnique());
 
         $db->createCommand()->dropIndex($name, $tableName)->execute();
-
         $this->assertEmpty($schema->getTableIndexes($tableName, true));
 
         $db->createCommand()->createIndex($name, $tableName, ['int1', 'int2'], true)->execute();
-
         $this->assertEquals(['int1', 'int2'], $schema->getTableIndexes($tableName, true)[0]->getColumnNames());
         $this->assertTrue($schema->getTableIndexes($tableName, true)[0]->isUnique());
     }
@@ -835,19 +745,15 @@ trait TestCommandTrait
             'int1' => 'integer not null',
             'int2' => 'integer not null',
         ])->execute();
-
         $this->assertEmpty($schema->getTableUniques($tableName, true));
 
         $db->createCommand()->addUnique($name, $tableName, ['int1'])->execute();
-
         $this->assertEquals(['int1'], $schema->getTableUniques($tableName, true)[0]->getColumnNames());
 
         $db->createCommand()->dropUnique($name, $tableName)->execute();
-
         $this->assertEmpty($schema->getTableUniques($tableName, true));
 
         $db->createCommand()->addUnique($name, $tableName, ['int1', 'int2'])->execute();
-
         $this->assertEquals(['int1', 'int2'], $schema->getTableUniques($tableName, true)[0]->getColumnNames());
     }
 
@@ -858,9 +764,7 @@ trait TestCommandTrait
         $db = $this->getConnection();
 
         $sql = 'INSERT INTO {{profile}}([[id]], [[description]]) VALUES (123, \'duplicate\')';
-
         $command = $db->createCommand($sql);
-
         $command->execute();
         $command->execute();
     }
@@ -870,11 +774,8 @@ trait TestCommandTrait
         $db = $this->getConnection(true);
 
         $sql = 'INSERT INTO {{profile}}([[description]]) VALUES (\'non duplicate\')';
-
         $command = $db->createCommand($sql);
-
         $command->execute();
-
         $this->assertEquals(3, $db->getSchema()->getLastInsertID());
     }
 
@@ -883,15 +784,11 @@ trait TestCommandTrait
         $db = $this->getConnection(true);
 
         $this->queryCache->setEnable(true);
-
         $command = $db->createCommand('SELECT [[name]] FROM {{customer}} WHERE [[id]] = :id');
-
         $this->assertEquals('user1', $command->bindValue(':id', 1)->queryScalar());
 
         $update = $db->createCommand('UPDATE {{customer}} SET [[name]] = :name WHERE [[id]] = :id');
-
         $update->bindValues([':id' => 1, ':name' => 'user11'])->execute();
-
         $this->assertEquals('user11', $command->bindValue(':id', 1)->queryScalar());
 
         $db->cache(function (ConnectionInterface $db) use ($command, $update) {
@@ -917,13 +814,10 @@ trait TestCommandTrait
         }, 10);
 
         $this->queryCache->setEnable(true);
-
         $command = $db->createCommand('SELECT [[name]] FROM {{customer}} WHERE [[id]] = :id')->cache();
-
         $this->assertEquals('user11', $command->bindValue(':id', 1)->queryScalar());
 
         $update->bindValues([':id' => 1, ':name' => 'user1'])->execute();
-
         $this->assertEquals('user11', $command->bindValue(':id', 1)->queryScalar());
         $this->assertEquals('user1', $command->noCache()->bindValue(':id', 1)->queryScalar());
 
@@ -942,25 +836,19 @@ trait TestCommandTrait
         $this->assertEquals(PDO::CASE_NATURAL, $db->getSlavePdo()->getAttribute(PDO::ATTR_CASE));
 
         $sql = 'SELECT [[customer_id]], [[total]] FROM {{order}}';
-
         $rows = $db->createCommand($sql)->queryAll();
-
         $this->assertTrue(isset($rows[0]));
         $this->assertTrue(isset($rows[0]['customer_id']));
         $this->assertTrue(isset($rows[0]['total']));
 
         $db->getSlavePdo()->setAttribute(PDO::ATTR_CASE, PDO::CASE_LOWER);
-
         $rows = $db->createCommand($sql)->queryAll();
-
         $this->assertTrue(isset($rows[0]));
         $this->assertTrue(isset($rows[0]['customer_id']));
         $this->assertTrue(isset($rows[0]['total']));
 
         $db->getSlavePdo()->setAttribute(PDO::ATTR_CASE, PDO::CASE_UPPER);
-
         $rows = $db->createCommand($sql)->queryAll();
-
         $this->assertTrue(isset($rows[0]));
         $this->assertTrue(isset($rows[0]['CUSTOMER_ID']));
         $this->assertTrue(isset($rows[0]['TOTAL']));
@@ -973,11 +861,8 @@ trait TestCommandTrait
         $this->assertNull($db->getTransaction());
 
         $command = $db->createCommand("INSERT INTO {{profile}}([[description]]) VALUES('command transaction')");
-
         $this->invokeMethod($command, 'requireTransaction');
-
         $command->execute();
-
         $this->assertNull($db->getTransaction());
         $this->assertEquals(
             1,
@@ -994,7 +879,6 @@ trait TestCommandTrait
         $this->assertNull($db->getTransaction());
 
         $db->createCommand("INSERT INTO {{profile}}([[description]]) VALUES('command retry')")->execute();
-
         $this->assertNull($db->getTransaction());
         $this->assertEquals(
             1,
@@ -1010,7 +894,6 @@ trait TestCommandTrait
         $command = $db->createCommand(
             "INSERT INTO {{profile}}([[id]], [[description]]) VALUES(1, 'command retry')"
         );
-
         $this->invokeMethod(
             $command,
             'setRetryHandler',
@@ -1056,13 +939,10 @@ trait TestCommandTrait
             'id' => Schema::TYPE_PK,
             'bar' => Schema::TYPE_INTEGER,
         ])->execute();
-
         $db->createCommand()->insert('testCreateViewTable', ['bar' => 1])->execute();
         $db->createCommand()->insert('testCreateViewTable', ['bar' => 6])->execute();
         $db->createCommand()->createView('testCreateView', $subquery)->execute();
-
         $records = $db->createCommand('SELECT [[bar]] FROM {{testCreateView}};')->queryAll();
-
         $this->assertEquals([['bar' => 6]], $records);
     }
 
@@ -1076,7 +956,6 @@ trait TestCommandTrait
         $this->assertNotNull($db->getSchema()->getTableSchema($viewName));
 
         $db->createCommand()->dropView($viewName)->execute();
-
         $this->assertNull($db->getSchema()->getTableSchema($viewName));
     }
 
