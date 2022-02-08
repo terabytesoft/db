@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\View;
 
-trait ViewFinderTrait
+interface ViewInterface
 {
-    private array $viewNames = [];
-
     /**
      * Returns all views names in the database.
      *
@@ -15,7 +13,7 @@ trait ViewFinderTrait
      *
      * @return array all views names in the database. The names have NO schema name prefix.
      */
-    abstract protected function findViewNames(string $schema = ''): array;
+    public function findViewNames(string $schema = ''): array;
 
     /**
      * Returns all view names in the database.
@@ -27,12 +25,5 @@ trait ViewFinderTrait
      *
      * @return array all view names in the database.
      */
-    public function getViewNames(string $schema = '', bool $refresh = false): array
-    {
-        if (!isset($this->viewNames[$schema]) || $refresh) {
-            $this->viewNames[$schema] = $this->findViewNames($schema);
-        }
-
-        return $this->viewNames[$schema];
-    }
+    public function getViewNames(string $schema = '', bool $refresh = false): array;
 }

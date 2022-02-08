@@ -925,21 +925,6 @@ abstract class QueryBuilder implements QueryBuilderInterface
         return [$names, $placeholders, $values, $params];
     }
 
-    /**
-     * Prepares a `SET` parts for an `UPDATE` SQL statement.
-     *
-     * @param string $table the table to be updated.
-     * @param array $columns the column data (name => value) to be updated.
-     * @param array $params the binding parameters that will be modified by this method so that they can be bound to the
-     * DB command later.
-     *
-     * @psalm-param array<string, ExpressionInterface|string> $columns
-     *
-     * @throws Exception|InvalidArgumentException
-     *
-     * @return array `SET` parts for an `UPDATE` SQL statement (the first array element) and params (the second array
-     * element).
-     */
     public function prepareUpdateSets(string $table, array $columns, array $params = []): array
     {
         $tableSchema = $this->schema->getTableSchema($table);
