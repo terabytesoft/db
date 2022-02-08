@@ -4,6 +4,19 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Schema;
 
+use function addcslashes;
+use function explode;
+use function implode;
+use function is_string;
+use function preg_replace_callback;
+use function str_contains;
+use function str_replace;
+use function str_starts_with;
+use function strlen;
+use function strpos;
+use function strrpos;
+use function substr;
+
 class Quoter implements QuoterInterface
 {
     public function __construct(
@@ -15,7 +28,7 @@ class Quoter implements QuoterInterface
 
     public function quoteColumnName(string $name): string
     {
-        if (strpos($name, '(') !== false || strpos($name, '[[') !== false) {
+        if (str_contains($name, '(') || str_contains($name, '[[')) {
             return $name;
         }
 
@@ -26,7 +39,7 @@ class Quoter implements QuoterInterface
             $prefix = '';
         }
 
-        if (strpos($name, '{{') !== false) {
+        if (str_contains($name, '{{')) {
             return $name;
         }
 
@@ -41,7 +54,7 @@ class Quoter implements QuoterInterface
             [$startingCharacter, $endingCharacter] = $this->columnQuoteCharacter;
         }
 
-        return $name === '*' || strpos($name, $startingCharacter) !== false ? $name : $startingCharacter . $name
+        return $name === '*' || str_contains($name, $startingCharacter) ? $name : $startingCharacter . $name
             . $endingCharacter;
     }
 
@@ -53,7 +66,7 @@ class Quoter implements QuoterInterface
             [$startingCharacter, $endingCharacter] = $this->tableQuoteCharacter;
         }
 
-        return strpos($name, $startingCharacter) !== false ? $name : $startingCharacter . $name . $endingCharacter;
+        return str_contains($name, $startingCharacter) ? $name : $startingCharacter . $name . $endingCharacter;
     }
 
     public function quoteSql(string $sql): string
@@ -73,15 +86,15 @@ class Quoter implements QuoterInterface
 
     public function quoteTableName(string $name): string
     {
-        if (strpos($name, '(') === 0 && strpos($name, ')') === strlen($name) - 1) {
+        if (str_starts_with($name, '(') && strpos($name, ')') === strlen($name) - 1) {
             return $name;
         }
 
-        if (strpos($name, '{{') !== false) {
+        if (str_contains($name, '{{')) {
             return $name;
         }
 
-        if (strpos($name, '.') === false) {
+        if (!str_contains($name, '.')) {
             return $this->quoteSimpleTableName($name);
         }
 
@@ -111,7 +124,7 @@ class Quoter implements QuoterInterface
             $startingCharacter = $this->columnQuoteCharacter[0];
         }
 
-        return strpos($name, $startingCharacter) === false ? $name : substr($name, 1, -1);
+        return !str_contains($name, $startingCharacter) ? $name : substr($name, 1, -1);
     }
 
     public function unquoteSimpleTableName(string $name): string
@@ -122,7 +135,7 @@ class Quoter implements QuoterInterface
             $startingCharacter = $this->tableQuoteCharacter[0];
         }
 
-        return strpos($name, $startingCharacter) === false ? $name : substr($name, 1, -1);
+        return !str_contains($name, $startingCharacter) ? $name : substr($name, 1, -1);
     }
 
     /**

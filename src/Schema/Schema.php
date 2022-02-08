@@ -6,55 +6,29 @@ namespace Yiisoft\Db\Schema;
 
 use PDO;
 use PDOException;
-use Throwable;
 use Yiisoft\Cache\Dependency\TagDependency;
 use Yiisoft\Db\Cache\SchemaCache;
-use Yiisoft\Db\Connection\ConnectionInterface;
+use Yiisoft\Db\Constraint\Constraint;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\IntegrityException;
-use Yiisoft\Db\Exception\InvalidCallException;
-use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Exception\NotSupportedException;
 
-use function addcslashes;
-use function array_change_key_case;
 use function array_key_exists;
-use function array_map;
-use function explode;
 use function gettype;
-use function implode;
 use function is_array;
-use function is_string;
-use function md5;
 use function preg_match;
-use function preg_replace;
-use function serialize;
-use function str_replace;
-use function strlen;
-use function strpos;
-use function substr;
 use function ucfirst;
-use function version_compare;
 
-/**
- * Schema is the base class for concrete DBMS-specific schema classes.
- *
- * Schema represents the database schema information that is DBMS specific.
- *
- * @property string $lastInsertID The row ID of the last row inserted, or the last value retrieved from the sequence
- * object. This property is read-only.
- * @property string[] $schemaNames All schema names in the database, except system schemas. This property is read-only.
- * @property string $serverVersion Server version as a string. This property is read-only.
- * @property string[] $tableNames All table names in the database. This property is read-only.
- * @property TableSchema[] $tableSchemas The metadata for all tables in the database. Each array element is an instance
- * of {@see TableSchema} or its child class. This property is read-only.
- * @property string $transactionIsolationLevel The transaction isolation level to use for this transaction. This can be
- * one of {@see Transaction::READ_UNCOMMITTED}, {@see Transaction::READ_COMMITTED},
- * {@see Transaction::REPEATABLE_READ} and {@see Transaction::SERIALIZABLE} but also a string containing DBMS specific
- * syntax to be used after `SET TRANSACTION ISOLATION LEVEL`. This property is write-only.
- */
-abstract class Schema
+abstract class Schema implements SchemaInterface
 {
+    public const SCHEMA = 'schema';
+    public const PRIMARY_KEY = 'primaryKey';
+    public const INDEXES = 'indexes';
+    public const CHECKS = 'checks';
+    public const FOREIGN_KEYS = 'foreignKeys';
+    public const DEFAULT_VALUES = 'defaultValues';
+    public const UNIQUES = 'uniques';
+
     public const TYPE_PK = 'pk';
     public const TYPE_UPK = 'upk';
     public const TYPE_BIGPK = 'bigpk';
@@ -99,26 +73,285 @@ abstract class Schema
     private array $schemaNames = [];
     private array $tableNames = [];
     private array $tableMetadata = [];
-    private ?string $serverVersion = null;
 
-    public function __construct(private ConnectionInterface $db, private SchemaCache $schemaCache)
+    public function __construct(private SchemaCache $schemaCache)
     {
     }
 
     /**
-     * Resolves the table name and schema name (if any).
+     * Returns the cache key for the specified table name.
      *
      * @param string $name the table name.
      *
-     * @throws NotSupportedException if this method is not supported by the DBMS.
-     *
-     * @return TableSchema with resolved table, schema, etc. names.
-     *
-     * {@see \Yiisoft\Db\Schema\TableSchema}
+     * @return array the cache key.
      */
-    protected function resolveTableName(string $name): TableSchema
+    abstract protected function getCacheKey(string $name): array;
+
+    /**
+     * Returns the cache tag name.
+     *
+     * This allows {@see refresh()} to invalidate all cached table schemas.
+     *
+     * @return string the cache tag name.
+     */
+    abstract protected function getCacheTag(): string;
+
+    /**
+     * Loads all check constraints for the given table.
+     *
+     * @param string $tableName table name.
+     *
+     * @return array check constraints for the given table.
+     */
+    abstract protected function loadTableChecks(string $tableName): array;
+
+    /**
+     * Loads all default value constraints for the given table.
+     *
+     * @param string $tableName table name.
+     *
+     * @return array default value constraints for the given table.
+     */
+    abstract protected function loadTableDefaultValues(string $tableName): array;
+
+    /**
+     * Loads all foreign keys for the given table.
+     *
+     * @param string $tableName table name.
+     *
+     * @return array foreign keys for the given table.
+     */
+    abstract protected function loadTableForeignKeys(string $tableName): array;
+
+    /**
+     * Loads all indexes for the given table.
+     *
+     * @param string $tableName table name.
+     *
+     * @return array indexes for the given table.
+     */
+    abstract protected function loadTableIndexes(string $tableName): array;
+
+    /**
+     * Loads a primary key for the given table.
+     *
+     * @param string $tableName table name.
+     *
+     * @return Constraint|null primary key for the given table, `null` if the table has no primary key.
+     */
+    abstract protected function loadTablePrimaryKey(string $tableName): ?Constraint;
+
+    /**
+     * Loads all unique constraints for the given table.
+     *
+     * @param string $tableName table name.
+     *
+     * @return array unique constraints for the given table.
+     */
+    abstract protected function loadTableUniques(string $tableName): array;
+
+    /**
+     * Loads the metadata for the specified table.
+     *
+     * @param string $name table name.
+     *
+     * @return TableSchema|null DBMS-dependent table metadata, `null` if the table does not exist.
+     */
+    abstract protected function loadTableSchema(string $name): ?TableSchema;
+
+    public function convertException(\Exception $e, string $rawSql): Exception
     {
-        throw new NotSupportedException(static::class . ' does not support resolving table names.');
+        if ($e instanceof Exception) {
+            return $e;
+        }
+
+        $exceptionClass = Exception::class;
+
+        foreach ($this->exceptionMap as $error => $class) {
+            if (str_contains($e->getMessage(), $error)) {
+                $exceptionClass = $class;
+            }
+        }
+
+        $message = $e->getMessage() . "\nThe SQL being executed was: $rawSql";
+        $errorInfo = $e instanceof PDOException ? $e->errorInfo : null;
+
+        return new $exceptionClass($message, $errorInfo, $e);
+    }
+
+    public function getDefaultSchema(): ?string
+    {
+        return $this->defaultSchema;
+    }
+
+    public function getPdoType($data): int
+    {
+        static $typeMap = [
+            // php type => PDO type
+            'boolean' => PDO::PARAM_BOOL,
+            'integer' => PDO::PARAM_INT,
+            'string' => PDO::PARAM_STR,
+            'resource' => PDO::PARAM_LOB,
+            'NULL' => PDO::PARAM_NULL,
+        ];
+
+        $type = gettype($data);
+
+        return $typeMap[$type] ?? PDO::PARAM_STR;
+    }
+
+    public function getSchemaCache(): SchemaCache
+    {
+        return $this->schemaCache;
+    }
+
+    /**
+     * @throws NotSupportedException
+     */
+    public function getSchemaChecks(string $schema = '', bool $refresh = false): array
+    {
+        return $this->getSchemaMetadata($schema, 'checks', $refresh);
+    }
+
+    /**
+     * @throws NotSupportedException
+     */
+    public function getSchemaDefaultValues(string $schema = '', bool $refresh = false): array
+    {
+        return $this->getSchemaMetadata($schema, 'defaultValues', $refresh);
+    }
+
+    /**
+     * @throws NotSupportedException
+     */
+    public function getSchemaForeignKeys(string $schema = '', bool $refresh = false): array
+    {
+        return $this->getSchemaMetadata($schema, 'foreignKeys', $refresh);
+    }
+
+    /**
+     * @throws NotSupportedException
+     */
+    public function getSchemaIndexes(string $schema = '', bool $refresh = false): array
+    {
+        return $this->getSchemaMetadata($schema, 'indexes', $refresh);
+    }
+
+    public function getSchemaNames(bool $refresh = false): array
+    {
+        if (empty($this->schemaNames) || $refresh) {
+            $this->schemaNames = $this->findSchemaNames();
+        }
+
+        return $this->schemaNames;
+    }
+
+    /**
+     * @throws NotSupportedException
+     */
+    public function getSchemaPrimaryKeys(string $schema = '', bool $refresh = false): array
+    {
+        return $this->getSchemaMetadata($schema, 'primaryKey', $refresh);
+    }
+
+    /**
+     * @throws NotSupportedException
+     */
+    public function getSchemaUniques(string $schema = '', bool $refresh = false): array
+    {
+        return $this->getSchemaMetadata($schema, 'uniques', $refresh);
+    }
+
+    public function getTableChecks(string $name, bool $refresh = false): array
+    {
+        return $this->getTableMetadata($name, 'checks', $refresh);
+    }
+
+    public function getTableDefaultValues(string $name, bool $refresh = false): array
+    {
+        return $this->getTableMetadata($name, 'defaultValues', $refresh);
+    }
+
+    public function getTableForeignKeys(string $name, bool $refresh = false): array
+    {
+        return $this->getTableMetadata($name, 'foreignKeys', $refresh);
+    }
+
+    public function getTableIndexes(string $name, bool $refresh = false): array
+    {
+        return $this->getTableMetadata($name, 'indexes', $refresh);
+    }
+
+    public function getTableNames(string $schema = '', bool $refresh = false): array
+    {
+        if (!isset($this->tableNames[$schema]) || $refresh) {
+            $this->tableNames[$schema] = $this->findTableNames($schema);
+        }
+
+        return $this->tableNames[$schema];
+    }
+
+    public function getTablePrimaryKey(string $name, bool $refresh = false): ?Constraint
+    {
+        return $this->getTableMetadata($name, 'primaryKey', $refresh);
+    }
+
+    public function getTableSchema(string $name, bool $refresh = false): ?TableSchema
+    {
+        return $this->getTableMetadata($name, 'schema', $refresh);
+    }
+
+    public function getTableSchemas(string $schema = '', bool $refresh = false): array
+    {
+        return $this->getSchemaMetadata($schema, 'schema', $refresh);
+    }
+
+    public function getTableUniques(string $name, bool $refresh = false): array
+    {
+        return $this->getTableMetadata($name, 'uniques', $refresh);
+    }
+
+    /**
+     * Returns a value indicating whether a SQL statement is for read purpose.
+     *
+     * @param string $sql the SQL statement.
+     *
+     * @return bool whether a SQL statement is for read purpose.
+     */
+    public function isReadQuery(string $sql): bool
+    {
+        $pattern = '/^\s*(SELECT|SHOW|DESCRIBE)\b/i';
+
+        return preg_match($pattern, $sql) > 0;
+    }
+
+    /**
+     * Refreshes the schema.
+     *
+     * This method cleans up all cached table schemas so that they can be re-created later to reflect the database
+     * schema change.
+     */
+    public function refresh(): void
+    {
+        if ($this->schemaCache->isEnabled()) {
+            $this->schemaCache->invalidate($this->getCacheTag());
+        }
+
+        $this->tableNames = [];
+        $this->tableMetadata = [];
+    }
+
+    public function refreshTableSchema(string $name): void
+    {
+        $rawName = $this->getRawTableName($name);
+
+        unset($this->tableMetadata[$rawName]);
+
+        $this->tableNames = [];
+
+        if ($this->schemaCache->isEnabled()) {
+            $this->schemaCache->remove($this->getCacheKey($rawName));
+        }
     }
 
     /**
@@ -151,287 +384,6 @@ abstract class Schema
     protected function findTableNames(string $schema = ''): array
     {
         throw new NotSupportedException(static::class . ' does not support fetching all table names.');
-    }
-
-    /**
-     * Loads the metadata for the specified table.
-     *
-     * @param string $name table name.
-     *
-     * @return TableSchema|null DBMS-dependent table metadata, `null` if the table does not exist.
-     */
-    abstract protected function loadTableSchema(string $name): ?TableSchema;
-
-    /**
-     * Obtains the metadata for the named table.
-     *
-     * @param string $name table name. The table name may contain schema name if any. Do not quote the table name.
-     * @param bool $refresh whether to reload the table schema even if it is found in the cache.
-     *
-     * @return TableSchema|null table metadata. `null` if the named table does not exist.
-     */
-    public function getTableSchema(string $name, bool $refresh = false): ?TableSchema
-    {
-        return $this->getTableMetadata($name, 'schema', $refresh);
-    }
-
-    /**
-     * Returns the metadata for all tables in the database.
-     *
-     * @param string $schema the schema of the tables. Defaults to empty string, meaning the current or default schema
-     * name.
-     * @param bool $refresh whether to fetch the latest available table schemas. If this is `false`, cached data may be
-     * returned if available.
-     *
-     * @throws NotSupportedException
-     *
-     * @return TableSchema[] the metadata for all tables in the database. Each array element is an instance of
-     * {@see TableSchema} or its child class.
-     */
-    public function getTableSchemas(string $schema = '', bool $refresh = false): array
-    {
-        return $this->getSchemaMetadata($schema, 'schema', $refresh);
-    }
-
-    /**
-     * Returns all schema names in the database, except system schemas.
-     *
-     * @param bool $refresh whether to fetch the latest available schema names. If this is false, schema names fetched
-     * previously (if available) will be returned.
-     *
-     * @throws NotSupportedException
-     *
-     * @return string[] all schema names in the database, except system schemas.
-     */
-    public function getSchemaNames(bool $refresh = false): array
-    {
-        if (empty($this->schemaNames) || $refresh) {
-            $this->schemaNames = $this->findSchemaNames();
-        }
-
-        return $this->schemaNames;
-    }
-
-    /**
-     * Returns all table names in the database.
-     *
-     * @param string $schema the schema of the tables. Defaults to empty string, meaning the current or default schema
-     * name.
-     * If not empty, the returned table names will be prefixed with the schema name.
-     * @param bool $refresh whether to fetch the latest available table names. If this is false, table names fetched
-     * previously (if available) will be returned.
-     *
-     * @throws NotSupportedException
-     *
-     * @return string[] all table names in the database.
-     */
-    public function getTableNames(string $schema = '', bool $refresh = false): array
-    {
-        if (!isset($this->tableNames[$schema]) || $refresh) {
-            $this->tableNames[$schema] = $this->findTableNames($schema);
-        }
-
-        return $this->tableNames[$schema];
-    }
-
-    /**
-     * Determines the PDO type for the given PHP data value.
-     *
-     * @param mixed $data the data whose PDO type is to be determined
-     *
-     * @return int the PDO type
-     *
-     * {@see http://www.php.net/manual/en/pdo.constants.php}
-     */
-    public function getPdoType($data): int
-    {
-        static $typeMap = [
-            // php type => PDO type
-            'boolean' => PDO::PARAM_BOOL,
-            'integer' => PDO::PARAM_INT,
-            'string' => PDO::PARAM_STR,
-            'resource' => PDO::PARAM_LOB,
-            'NULL' => PDO::PARAM_NULL,
-        ];
-
-        $type = gettype($data);
-
-        return $typeMap[$type] ?? PDO::PARAM_STR;
-    }
-
-    /**
-     * Refreshes the schema.
-     *
-     * This method cleans up all cached table schemas so that they can be re-created later to reflect the database
-     * schema change.
-     */
-    public function refresh(): void
-    {
-        if ($this->schemaCache->isEnabled()) {
-            $this->schemaCache->invalidate($this->getCacheTag());
-        }
-
-        $this->tableNames = [];
-        $this->tableMetadata = [];
-    }
-
-    /**
-     * Refreshes the particular table schema.
-     *
-     * This method cleans up cached table schema so that it can be re-created later to reflect the database schema
-     * change.
-     *
-     * @param string $name table name.
-     */
-    public function refreshTableSchema(string $name): void
-    {
-        $rawName = $this->getRawTableName($name);
-
-        unset($this->tableMetadata[$rawName]);
-
-        $this->tableNames = [];
-
-        if ($this->schemaCache->isEnabled()) {
-            $this->schemaCache->remove($this->getCacheKey($rawName));
-        }
-    }
-
-    /**
-     * Returns the ID of the last inserted row or sequence value.
-     *
-     * @param string $sequenceName name of the sequence object (required by some DBMS)
-     *
-     * @throws InvalidCallException if the DB connection is not active
-     *
-     * @return string the row ID of the last row inserted, or the last value retrieved from the sequence object
-     *
-     * @see http://www.php.net/manual/en/function.PDO-lastInsertId.php
-     */
-    public function getLastInsertID(string $sequenceName = ''): string
-    {
-        if ($this->db->isActive()) {
-            return $this->db->getPDO()->lastInsertId(
-                $sequenceName === '' ? null : $this->db->getQuoter()->quoteTableName($sequenceName)
-            );
-        }
-
-        throw new InvalidCallException('DB Connection is not active.');
-    }
-
-    /**
-     * @return bool whether this DBMS supports [savepoint](http://en.wikipedia.org/wiki/Savepoint).
-     */
-    public function supportsSavepoint(): bool
-    {
-        return $this->db->isSavepointEnabled();
-    }
-
-    /**
-     * Creates a new savepoint.
-     *
-     * @param string $name the savepoint name
-     *
-     * @throws Exception|InvalidConfigException|Throwable
-     */
-    public function createSavepoint(string $name): void
-    {
-        $this->db->createCommand("SAVEPOINT $name")->execute();
-    }
-
-    /**
-     * Releases an existing savepoint.
-     *
-     * @param string $name the savepoint name
-     *
-     * @throws Exception|InvalidConfigException|Throwable
-     */
-    public function releaseSavepoint(string $name): void
-    {
-        $this->db->createCommand("RELEASE SAVEPOINT $name")->execute();
-    }
-
-    /**
-     * Rolls back to a previously created savepoint.
-     *
-     * @param string $name the savepoint name
-     *
-     * @throws Exception|InvalidConfigException|Throwable
-     */
-    public function rollBackSavepoint(string $name): void
-    {
-        $this->db->createCommand("ROLLBACK TO SAVEPOINT $name")->execute();
-    }
-
-    /**
-     * Sets the isolation level of the current transaction.
-     *
-     * @param string $level The transaction isolation level to use for this transaction.
-     *
-     * This can be one of {@see Transaction::READ_UNCOMMITTED}, {@see Transaction::READ_COMMITTED},
-     * {@see Transaction::REPEATABLE_READ} and {@see Transaction::SERIALIZABLE} but also a string containing DBMS
-     * specific syntax to be used after `SET TRANSACTION ISOLATION LEVEL`.
-     *
-     * @throws Exception|InvalidConfigException|Throwable
-     *
-     * {@see http://en.wikipedia.org/wiki/Isolation_%28database_systems%29#Isolation_levels}
-     */
-    public function setTransactionIsolationLevel(string $level): void
-    {
-        $this->db->createCommand("SET TRANSACTION ISOLATION LEVEL $level")->execute();
-    }
-
-    /**
-     * Executes the INSERT command, returning primary key values.
-     *
-     * @param string $table the table that new rows will be inserted into.
-     * @param array $columns the column data (name => value) to be inserted into the table.
-     *
-     * @throws Exception|InvalidCallException|InvalidConfigException|Throwable
-     *
-     * @return array|false primary key values or false if the command fails.
-     */
-    public function insert(string $table, array $columns)
-    {
-        $command = $this->db->createCommand()->insert($table, $columns);
-
-        if (!$command->execute()) {
-            return false;
-        }
-
-        $tableSchema = $this->getTableSchema($table);
-        $result = [];
-
-        foreach ($tableSchema->getPrimaryKey() as $name) {
-            if ($tableSchema->getColumn($name)->isAutoIncrement()) {
-                $result[$name] = $this->getLastInsertID($tableSchema->getSequenceName());
-                break;
-            }
-
-            $result[$name] = $columns[$name] ?? $tableSchema->getColumn($name)->getDefaultValue();
-        }
-
-        return $result;
-    }
-
-    /**
-     * Returns the actual name of a given table name.
-     *
-     * This method will strip off curly brackets from the given table name and replace the percentage character '%' with
-     * {@see ConnectionInterface::tablePrefix}.
-     *
-     * @param string $name the table name to be converted.
-     *
-     * @return string the real name of the given table name.
-     */
-    public function getRawTableName(string $name): string
-    {
-        if (strpos($name, '{{') !== false) {
-            $name = preg_replace('/{{(.*?)}}/', '\1', $name);
-
-            return str_replace('%', $this->db->getTablePrefix(), $name);
-        }
-
-        return $name;
     }
 
     /**
@@ -472,94 +424,35 @@ abstract class Schema
     }
 
     /**
-     * Converts a DB exception to a more concrete one if possible.
+     * Returns the metadata of the given type for all tables in the given schema.
      *
-     * @param \Exception $e
-     * @param string $rawSql SQL that produced exception.
+     * @param string $schema the schema of the metadata. Defaults to empty string, meaning the current or default schema
+     * name.
+     * @param string $type metadata type.
+     * @param bool $refresh whether to fetch the latest available table metadata. If this is `false`, cached data may be
+     * returned if available.
      *
-     * @return Exception
+     * @throws NotSupportedException
+     *
+     * @return array array of metadata.
      */
-    public function convertException(\Exception $e, string $rawSql): Exception
+    protected function getSchemaMetadata(string $schema, string $type, bool $refresh): array
     {
-        if ($e instanceof Exception) {
-            return $e;
-        }
+        $metadata = [];
 
-        $exceptionClass = Exception::class;
+        foreach ($this->getTableNames($schema, $refresh) as $name) {
+            if ($schema !== '') {
+                $name = $schema . '.' . $name;
+            }
 
-        foreach ($this->exceptionMap as $error => $class) {
-            if (strpos($e->getMessage(), $error) !== false) {
-                $exceptionClass = $class;
+            $tableMetadata = $this->getTableTypeMetadata($type, $name, $refresh);
+
+            if ($tableMetadata !== null) {
+                $metadata[] = $tableMetadata;
             }
         }
 
-        $message = $e->getMessage() . "\nThe SQL being executed was: $rawSql";
-        $errorInfo = $e instanceof PDOException ? $e->errorInfo : null;
-
-        return new $exceptionClass($message, $errorInfo, $e);
-    }
-
-    /**
-     * Returns a value indicating whether a SQL statement is for read purpose.
-     *
-     * @param string $sql the SQL statement.
-     *
-     * @return bool whether a SQL statement is for read purpose.
-     */
-    public function isReadQuery(string $sql): bool
-    {
-        $pattern = '/^\s*(SELECT|SHOW|DESCRIBE)\b/i';
-
-        return preg_match($pattern, $sql) > 0;
-    }
-
-    /**
-     * Returns a server version as a string comparable by {@see version_compare()}.
-     *
-     * @throws Exception
-     *
-     * @return string server version as a string.
-     */
-    public function getServerVersion(): string
-    {
-        if ($this->serverVersion === null) {
-            $this->serverVersion = $this->db->getSlavePdo()->getAttribute(PDO::ATTR_SERVER_VERSION);
-        }
-
-        return $this->serverVersion;
-    }
-
-    /**
-     * Returns the cache key for the specified table name.
-     *
-     * @param string $name the table name.
-     *
-     * @return array the cache key.
-     */
-    protected function getCacheKey(string $name): array
-    {
-        return [
-            __CLASS__,
-            $this->db->getDriver()->getDsn(),
-            $this->db->getDriver()->getUsername(),
-            $this->getRawTableName($name),
-        ];
-    }
-
-    /**
-     * Returns the cache tag name.
-     *
-     * This allows {@see refresh()} to invalidate all cached table schemas.
-     *
-     * @return string the cache tag name.
-     */
-    protected function getCacheTag(): string
-    {
-        return md5(serialize([
-            __CLASS__,
-            $this->db->getDriver()->getDsn(),
-            $this->db->getDriver()->getUsername(),
-        ]));
+        return $metadata;
     }
 
     /**
@@ -574,7 +467,7 @@ abstract class Schema
      *
      * @return mixed metadata.
      */
-    protected function getTableMetadata(string $name, string $type, bool $refresh = false)
+    protected function getTableMetadata(string $name, string $type, bool $refresh = false): mixed
     {
         $rawName = $this->getRawTableName($name);
 
@@ -591,39 +484,45 @@ abstract class Schema
     }
 
     /**
-     * Returns the metadata of the given type for all tables in the given schema.
+     * This method returns the desired metadata type for table name (with refresh if needed)
      *
-     * This method will call a `'getTable' . ucfirst($type)` named method with the table name and the refresh flag to
-     * obtain the metadata.
+     * @param string $type
+     * @param string $name
+     * @param bool $refresh
      *
-     * @param string $schema the schema of the metadata. Defaults to empty string, meaning the current or default schema
-     * name.
-     * @param string $type metadata type.
-     * @param bool $refresh whether to fetch the latest available table metadata. If this is `false`, cached data may be
-     * returned if available.
-     *
-     * @throws NotSupportedException
-     *
-     * @return array array of metadata.
+     * @return Constraint|array|TableSchema|null
      */
-    protected function getSchemaMetadata(string $schema, string $type, bool $refresh): array
+    protected function getTableTypeMetadata(
+        string $type,
+        string $name,
+        bool $refresh = false
+    ): Constraint|array|null|TableSchema {
+        return match ($type) {
+            self::SCHEMA => $this->getTableSchema($name, $refresh),
+            self::PRIMARY_KEY => $this->getTablePrimaryKey($name, $refresh),
+            self::UNIQUES => $this->getTableUniques($name, $refresh),
+            self::FOREIGN_KEYS => $this->getTableForeignKeys($name, $refresh),
+            self::INDEXES => $this->getTableIndexes($name, $refresh),
+            self::DEFAULT_VALUES => $this->getTableDefaultValues($name, $refresh),
+            self::CHECKS => $this->getTableChecks($name, $refresh),
+            default => null,
+        };
+    }
+
+    /**
+     * Resolves the table name and schema name (if any).
+     *
+     * @param string $name the table name.
+     *
+     * @throws NotSupportedException if this method is not supported by the DBMS.
+     *
+     * @return TableSchema with resolved table, schema, etc. names.
+     *
+     * {@see \Yiisoft\Db\Schema\TableSchema}
+     */
+    protected function resolveTableName(string $name): TableSchema
     {
-        $metadata = [];
-        $methodName = 'getTable' . ucfirst($type);
-
-        foreach ($this->getTableNames($schema, $refresh) as $name) {
-            if ($schema !== '') {
-                $name = $schema . '.' . $name;
-            }
-
-            $tableMetadata = $this->$methodName($name, $refresh);
-
-            if ($tableMetadata !== null) {
-                $metadata[] = $tableMetadata;
-            }
-        }
-
-        return $metadata;
+        throw new NotSupportedException(static::class . ' does not support resolving table names.');
     }
 
     /**
@@ -633,34 +532,9 @@ abstract class Schema
      * @param string $type metadata type.
      * @param mixed $data metadata.
      */
-    protected function setTableMetadata(string $name, string $type, $data): void
+    protected function setTableMetadata(string $name, string $type, mixed $data): void
     {
         $this->tableMetadata[$this->getRawTableName($name)][$type] = $data;
-    }
-
-    /**
-     * Changes row's array key case to lower if PDO's one is set to uppercase.
-     *
-     * @param array $row row's array or an array of row's arrays.
-     * @param bool $multiple whether multiple rows or a single row passed.
-     *
-     * @throws Exception
-     *
-     * @return array normalized row or rows.
-     */
-    protected function normalizePdoRowKeyCase(array $row, bool $multiple): array
-    {
-        if ($this->db->getSlavePdo()->getAttribute(PDO::ATTR_CASE) !== PDO::CASE_UPPER) {
-            return $row;
-        }
-
-        if ($multiple) {
-            return array_map(static function (array $row) {
-                return array_change_key_case($row, CASE_LOWER);
-            }, $row);
-        }
-
-        return array_change_key_case($row, CASE_LOWER);
     }
 
     /**
@@ -717,15 +591,5 @@ abstract class Schema
             $this->schemaCache->getDuration(),
             new TagDependency($this->getCacheTag()),
         );
-    }
-
-    public function getDefaultSchema(): ?string
-    {
-        return $this->defaultSchema;
-    }
-
-    public function getSchemaCache(): SchemaCache
-    {
-        return $this->schemaCache;
     }
 }

@@ -6,6 +6,7 @@ namespace Yiisoft\Db\TestSupport;
 
 use Psr\Log\LoggerInterface;
 use ReflectionClass;
+use ReflectionException;
 use ReflectionObject;
 use Yiisoft\Cache\ArrayCache;
 use Yiisoft\Cache\Cache;
@@ -47,7 +48,7 @@ trait TestTrait
      * @param array $expected
      * @param string $message
      */
-    protected function assertIsOneOf($actual, array $expected, $message = ''): void
+    protected function assertIsOneOf(mixed $actual, array $expected, string $message = ''): void
     {
         self::assertThat($actual, new IsOneOfAssert($expected), $message);
     }
@@ -102,7 +103,7 @@ trait TestTrait
      *
      * @return mixed
      */
-    protected function getInaccessibleProperty(object $object, string $propertyName, bool $revoke = true)
+    protected function getInaccessibleProperty(object $object, string $propertyName, bool $revoke = true): mixed
     {
         $class = new ReflectionClass($object);
 
@@ -124,16 +125,18 @@ trait TestTrait
     }
 
     /**
-     * Invokes a inaccessible method.
+     * Invokes an inaccessible method.
      *
      * @param object $object
      * @param string $method
      * @param array $args
      * @param bool $revoke whether to make method inaccessible after execution.
      *
+     * @throws ReflectionException
+     *
      * @return mixed
      */
-    protected function invokeMethod(object $object, string $method, array $args = [], bool $revoke = true)
+    protected function invokeMethod(object $object, string $method, array $args = [], bool $revoke = true): mixed
     {
         $reflection = new ReflectionObject($object);
 
@@ -178,24 +181,17 @@ trait TestTrait
      *
      * @param $sql
      *
-     * @return mixed
+     * @return string|array|null
      */
-    protected function replaceQuotes($sql)
+    protected function replaceQuotes($sql): string|array|null
     {
-        switch ($this->drivername) {
-            case 'mysql':
-            case 'sqlite':
-                return str_replace(['[[', ']]'], '`', $sql);
-            case 'oci':
-                return str_replace(['[[', ']]'], '"', $sql);
-            case 'pgsql':
-                // more complex replacement needed to not conflict with postgres array syntax
-                return str_replace(['\\[', '\\]'], ['[', ']'], preg_replace('/(\[\[)|((?<!(\[))]])/', '"', $sql));
-            case 'mssql':
-                return str_replace(['[[', ']]'], ['[', ']'], $sql);
-            default:
-                return $sql;
-        }
+        return match ($this->drivername) {
+            'mysql', 'sqlite' => str_replace(['[[', ']]'], '`', $sql),
+            'oci' => str_replace(['[[', ']]'], '"', $sql),
+            'pgsql' => str_replace(['\\[', '\\]'], ['[', ']'], preg_replace('/(\[\[)|((?<!(\[))]])/', '"', $sql)),
+            'sqlsrv' => str_replace(['[[', ']]'], ['[', ']'], $sql),
+            default => $sql,
+        };
     }
 
     /**

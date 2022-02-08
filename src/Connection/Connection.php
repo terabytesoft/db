@@ -4,23 +4,16 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Connection;
 
+use PDOException;
 use Psr\Log\LogLevel;
 use Throwable;
 use Yiisoft\Cache\Dependency\Dependency;
 use Yiisoft\Db\AwareTrait\LoggerAwareTrait;
 use Yiisoft\Db\AwareTrait\ProfilerAwareTrait;
 use Yiisoft\Db\Cache\QueryCache;
-use Yiisoft\Db\Command\Command;
 use Yiisoft\Db\Exception\Exception;
-use Yiisoft\Db\Exception\InvalidCallException;
-use Yiisoft\Db\Exception\InvalidConfigException;
-use Yiisoft\Db\Exception\NotSupportedException;
-use Yiisoft\Db\Query\QueryBuilder;
 use Yiisoft\Db\Schema\TableSchema;
-use Yiisoft\Db\Transaction\Transaction;
-
-use function array_keys;
-use function str_replace;
+use Yiisoft\Db\Transaction\TransactionInterface;
 
 abstract class Connection implements ConnectionInterface
 {
@@ -31,22 +24,13 @@ abstract class Connection implements ConnectionInterface
     protected array $slaves = [];
     protected ?ConnectionInterface $master = null;
     protected ?ConnectionInterface $slave = null;
-    protected ?Transaction $transaction = null;
+    protected ?TransactionInterface $transaction = null;
     private ?bool $emulatePrepare = null;
     private bool $enableSavepoint = true;
     private bool $enableSlaves = true;
     private int $serverRetryInterval = 600;
     private bool $shuffleMasters = true;
     private string $tablePrefix = '';
-
-    /**
-     * Establishes a DB connection.
-     *
-     * It does nothing if a DB connection has already been established.
-     *
-     * @throws Exception|InvalidConfigException if connection fails
-     */
-    abstract public function open(): void;
 
     public function __construct(private QueryCache $queryCache)
     {
@@ -57,68 +41,24 @@ abstract class Connection implements ConnectionInterface
         return $this->enableSlaves;
     }
 
-    /**
-     * Starts a transaction.
-     *
-     * @param string|null $isolationLevel The isolation level to use for this transaction.
-     *
-     * {@see Transaction::begin()} for details.
-     *
-     * @throws Exception|InvalidConfigException|NotSupportedException|Throwable
-     *
-     * @return Transaction the transaction initiated
-     */
-    public function beginTransaction(string $isolationLevel = null): Transaction
+    public function beginTransaction(string $isolationLevel = null): TransactionInterface
     {
         $this->open();
+        $this->transaction = $this->getTransaction();
 
-        if (($transaction = $this->getTransaction()) === null) {
-            $transaction = $this->transaction = new Transaction($this);
-            if ($this->logger !== null) {
-                $transaction->setLogger($this->logger);
-            }
+        if ($this->transaction === null) {
+            $this->transaction = $this->createTransaction();
         }
 
-        $transaction->begin($isolationLevel);
+        if ($this->logger !== null) {
+            $this->transaction->setLogger($this->logger);
+        }
 
-        return $transaction;
+        $this->transaction->begin($isolationLevel);
+
+        return $this->transaction;
     }
 
-    /**
-     * Uses query cache for the queries performed with the callable.
-     *
-     * When query caching is enabled ({@see enableQueryCache} is true and {@see queryCache} refers to a valid cache),
-     * queries performed within the callable will be cached and their results will be fetched from cache if available.
-     *
-     * For example,
-     *
-     * ```php
-     * // The customer will be fetched from cache if available.
-     * // If not, the query will be made against DB and cached for use next time.
-     * $customer = $db->cache(function (ConnectionInterface $db) {
-     *     return $db->createCommand('SELECT * FROM customer WHERE id=1')->queryOne();
-     * });
-     * ```
-     *
-     * Note that query cache is only meaningful for queries that return results. For queries performed with
-     * {@see Command::execute()}, query cache will not be used.
-     *
-     * @param callable $callable a PHP callable that contains DB queries which will make use of query cache.
-     * The signature of the callable is `function (ConnectionInterface $db)`.
-     * @param int|null $duration the number of seconds that query results can remain valid in the cache. If this is not
-     * set, the value of {@see queryCacheDuration} will be used instead. Use 0 to indicate that the cached data will
-     * never expire.
-     * @param Dependency|null $dependency the cache dependency associated with the cached query
-     * results.
-     *
-     * @throws Throwable if there is any exception during query
-     *
-     * @return mixed the return result of the callable
-     *
-     * {@see setEnableQueryCache()}
-     * {@see queryCache}
-     * {@see noCache()}
-     */
     public function cache(callable $callable, int $duration = null, Dependency $dependency = null): mixed
     {
         $this->queryCache->setInfo(
@@ -134,31 +74,11 @@ abstract class Connection implements ConnectionInterface
         return $this->emulatePrepare;
     }
 
-    /**
-     * Returns the ID of the last inserted row or sequence value.
-     *
-     * @param string $sequenceName name of the sequence object (required by some DBMS)
-     *
-     * @throws Exception
-     * @throws InvalidCallException
-     *
-     * @return string the row ID of the last row inserted, or the last value retrieved from the sequence object
-     *
-     * {@see http://php.net/manual/en/pdo.lastinsertid.php'>http://php.net/manual/en/pdo.lastinsertid.php}
-     */
     public function getLastInsertID(string $sequenceName = ''): string
     {
         return $this->getSchema()->getLastInsertID($sequenceName);
     }
 
-    /**
-     * Returns the currently active master connection.
-     *
-     * If this method is called for the first time, it will try to open a master connection.
-     *
-     * @return Connection|null the currently active master connection. `null` is returned if there is no master
-     * available.
-     */
     public function getMaster(): ?self
     {
         if ($this->master === null) {
@@ -170,26 +90,6 @@ abstract class Connection implements ConnectionInterface
         return $this->master;
     }
 
-    /**
-     * @throws Exception
-     */
-    public function getServerVersion(): string
-    {
-        return $this->getSchema()->getServerVersion();
-    }
-
-    /**
-     * Returns the currently active slave connection.
-     *
-     * If this method is called for the first time, it will try to open a slave connection when {@see setEnableSlaves()}
-     * is true.
-     *
-     * @param bool $fallbackToMaster whether to return a master connection in case there is no slave connection
-     * available.
-     *
-     * @return Connection|null the currently active slave connection. `null` is returned if there is no slave available
-     * and `$fallbackToMaster` is false.
-     */
     public function getSlave(bool $fallbackToMaster = true): ?self
     {
         if (!$this->enableSlaves) {
@@ -213,12 +113,7 @@ abstract class Connection implements ConnectionInterface
         return $this->getSchema()->getTableSchema($name, $refresh);
     }
 
-    /**
-     * Returns the currently active transaction.
-     *
-     * @return Transaction|null the currently active transaction. Null if no active transaction.
-     */
-    public function getTransaction(): ?Transaction
+    public function getTransaction(): ?TransactionInterface
     {
         return $this->transaction && $this->transaction->isActive() ? $this->transaction : null;
     }
@@ -228,34 +123,6 @@ abstract class Connection implements ConnectionInterface
         return $this->enableSavepoint;
     }
 
-    /**
-     * Disables query cache temporarily.
-     *
-     * Queries performed within the callable will not use query cache at all. For example,
-     *
-     * ```php
-     * $db->cache(function (ConnectionInterface $db) {
-     *
-     *     // ... queries that use query cache ...
-     *
-     *     return $db->noCache(function (ConnectionInterface $db) {
-     *         // this query will not use query cache
-     *         return $db->createCommand('SELECT * FROM customer WHERE id=1')->queryOne();
-     *     });
-     * });
-     * ```
-     *
-     * @param callable $callable a PHP callable that contains DB queries which should not use query cache. The signature
-     * of the callable is `function (ConnectionInterface $db)`.
-     *
-     * @throws Throwable if there is any exception during query
-     *
-     * @return mixed the return result of the callable
-     *
-     * {@see enableQueryCache}
-     * {@see queryCache}
-     * {@see cache()}
-     */
     public function noCache(callable $callable): mixed
     {
         $queryCache = $this->queryCache;
@@ -265,25 +132,11 @@ abstract class Connection implements ConnectionInterface
         return $result;
     }
 
-    /**
-     * Whether to turn on prepare emulation. Defaults to false, meaning PDO will use the native prepare support if
-     * available. For some databases (such as MySQL), this may need to be set true so that PDO can emulate to prepare
-     * support to bypass the buggy native prepare support. The default value is null, which means the PDO
-     * ATTR_EMULATE_PREPARES value will not be changed.
-     *
-     * @param bool $value
-     */
     public function setEmulatePrepare(bool $value): void
     {
         $this->emulatePrepare = $value;
     }
 
-    /**
-     * Whether to enable [savepoint](http://en.wikipedia.org/wiki/Savepoint). Note that if the underlying DBMS does not
-     * support savepoint, setting this property to be true will have no effect.
-     *
-     * @param bool $value
-     */
     public function setEnableSavepoint(bool $value): void
     {
         $this->enableSavepoint = $value;
@@ -294,70 +147,31 @@ abstract class Connection implements ConnectionInterface
         $this->enableSlaves = $value;
     }
 
-    /**
-     * Set connection for master server, you can specify multiple connections, adding the id for each one.
-     *
-     * @param string $key index master connection.
-     * @param ConnectionInterface $master The connection every master.
-     */
     public function setMaster(string $key, ConnectionInterface $master): void
     {
         $this->masters[$key] = $master;
     }
 
-    /**
-     * The retry interval in seconds for dead servers listed in {@see setMaster()} and {@see setSlave()}.
-     *
-     * @param int $value
-     */
     public function setServerRetryInterval(int $value): void
     {
         $this->serverRetryInterval = $value;
     }
 
-    /**
-     * Whether to shuffle {@see setMaster()} before getting one.
-     *
-     * @param bool $value
-     */
     public function setShuffleMasters(bool $value): void
     {
         $this->shuffleMasters = $value;
     }
 
-    /**
-     * Set connection for master slave, you can specify multiple connections, adding the id for each one.
-     *
-     * @param string $key index slave connection.
-     * @param ConnectionInterface $slave The connection every slave.
-     */
     public function setSlave(string $key, ConnectionInterface $slave): void
     {
         $this->slaves[$key] = $slave;
     }
 
-    /**
-     * The common prefix or suffix for table names. If a table name is given as `{{%TableName}}`, then the percentage
-     * character `%` will be replaced with this property value. For example, `{{%post}}` becomes `{{tbl_post}}`.
-     *
-     * @param string $value
-     */
     public function setTablePrefix(string $value): void
     {
         $this->tablePrefix = $value;
     }
 
-    /**
-     * Executes callback provided in a transaction.
-     *
-     * @param callable $callback a valid PHP callback that performs the job. Accepts connection instance as parameter.
-     * @param string|null $isolationLevel The isolation level to use for this transaction. {@see Transaction::begin()}
-     * for details.
-     *
-     *@throws Throwable if there is any exception during query. In this case the transaction will be rolled back.
-     *
-     * @return mixed result of callback function
-     */
     public function transaction(callable $callback, string $isolationLevel = null): mixed
     {
         $transaction = $this->beginTransaction($isolationLevel);
@@ -406,9 +220,9 @@ abstract class Connection implements ConnectionInterface
      *
      * Connections will be tried in random order.
      *
-     * @param array $pool the list of connection configurations in the server pool
+     * @param array $pool The list of connection configurations in the server pool.
      *
-     * @return Connection|null the opened DB connection, or `null` if no server is available
+     * @return static|null The opened DB connection, or `null` if no server is available.
      */
     protected function openFromPool(array $pool): ?self
     {
@@ -425,9 +239,9 @@ abstract class Connection implements ConnectionInterface
      *
      * @param array $pool
      *
-     * @return ConnectionInterface|null the opened DB connection, or `null` if no server is available
+     * @return static|null The opened DB connection, or `null` if no server is available.
      */
-    protected function openFromPoolSequentially(array $pool): ?ConnectionInterface
+    protected function openFromPoolSequentially(array $pool): ?self
     {
         if (!$pool) {
             return null;
@@ -467,14 +281,14 @@ abstract class Connection implements ConnectionInterface
     }
 
     /**
-     * Rolls back given {@see Transaction} object if it's still active and level match. In some cases rollback can fail,
-     * so this method is fail-safe. Exceptions thrown from rollback will be caught and just logged with
+     * Rolls back given {@see TransactionInterface} object if it's still active and level match. In some cases rollback
+     * can fail, so this method is fail-safe. Exceptions thrown from rollback will be caught and just logged with
      * {@see logger->log()}.
      *
-     * @param Transaction $transaction Transaction object given from {@see beginTransaction()}.
-     * @param int $level Transaction level just after {@see beginTransaction()} call.
+     * @param TransactionInterface $transaction TransactionInterface object given from {@see beginTransaction()}.
+     * @param int $level TransactionInterface level just after {@see beginTransaction()} call.
      */
-    private function rollbackTransactionOnLevel(Transaction $transaction, int $level): void
+    private function rollbackTransactionOnLevel(TransactionInterface $transaction, int $level): void
     {
         if ($transaction->isActive() && $transaction->getLevel() === $level) {
             /**

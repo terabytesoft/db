@@ -6,7 +6,7 @@ namespace Yiisoft\Db\Driver;
 
 use PDO;
 
-final class PDODriver
+final class PDODriver implements DriverInterface
 {
     private ?string $charset = null;
     private ?PDO $pdo = null;
