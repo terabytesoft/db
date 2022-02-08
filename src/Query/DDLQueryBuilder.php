@@ -98,7 +98,7 @@ abstract class DDLQueryBuilder
             . ' PRIMARY KEY (' . implode(', ', $columns) . ')';
     }
 
-    public function addUnique(string $name, string $table, $columns): string
+    public function addUnique(string $name, string $table, array|string $columns): string
     {
         if (is_string($columns)) {
             $columns = preg_split('/\s*,\s*/', $columns, -1, PREG_SPLIT_NO_EMPTY);
