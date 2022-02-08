@@ -6,6 +6,7 @@ namespace Yiisoft\Db\Query;
 
 use Generator;
 use JsonException;
+use Yiisoft\Db\Command\CommandInterface;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\InvalidArgumentException;
 use Yiisoft\Db\Exception\InvalidConfigException;
@@ -15,6 +16,8 @@ use Yiisoft\Db\Expression\ExpressionBuilderInterface;
 use Yiisoft\Db\Expression\ExpressionInterface;
 use Yiisoft\Db\Query\Conditions\ConditionInterface;
 use Yiisoft\Db\Schema\ColumnSchemaBuilder;
+use Yiisoft\Db\Schema\QuoterInterface;
+use Yiisoft\Db\Schema\SchemaInterface;
 
 interface QueryBuilderInterface
 {
@@ -512,6 +515,11 @@ interface QueryBuilderInterface
     public function createView(string $viewName, Query|string $subQuery): string;
 
     /**
+     * Return command interface instance.
+     */
+    public function command(): CommandInterface;
+
+    /**
      * Creates a DELETE SQL statement.
      *
      * For example,
@@ -743,6 +751,11 @@ interface QueryBuilderInterface
     public function insert(string $table, Query|array $columns, array &$params = []): string;
 
     /**
+     * Return quoter interface instance.
+     */
+    public function quoter(): QuoterInterface;
+
+    /**
      * Builds a SQL statement for renaming a column.
      *
      * @param string $table the table whose column is to be renamed. The name will be properly quoted by the method.
@@ -787,6 +800,11 @@ interface QueryBuilderInterface
      * @return string the SELECT EXISTS() SQL statement.
      */
     public function selectExists(string $rawSql): string;
+
+    /**
+     * Return schema interface instance.
+     */
+    public function schema(): SchemaInterface;
 
     /**
      * Builds a SQL statement for truncating a DB table.
