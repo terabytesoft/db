@@ -232,8 +232,6 @@ interface QueryBuilderInterface
      *
      * @param array|string $columns the columns to be processed.
      *
-     * @psalm-param array<array-key, ExpressionInterface|string>|string $columns
-     *
      * @throws Exception|InvalidArgumentException
      *
      * @return string the processing result.
