@@ -8,8 +8,8 @@ use PDOStatement;
 use Throwable;
 use Yiisoft\Cache\Dependency\Dependency;
 use Yiisoft\Db\Cache\QueryCache;
-use Yiisoft\Db\Data\DataReader;
 use Yiisoft\Db\Exception\Exception;
+use Yiisoft\Db\Query\Data\DataReader;
 use Yiisoft\Db\Query\Query;
 use Yiisoft\Db\Query\QueryBuilderInterface;
 

@@ -15,13 +15,13 @@ use Yiisoft\Db\AwareTrait\LoggerAwareTrait;
 use Yiisoft\Db\AwareTrait\ProfilerAwareTrait;
 use Yiisoft\Db\Cache\QueryCache;
 use Yiisoft\Db\Connection\ConnectionInterface;
-use Yiisoft\Db\Data\DataReader;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\InvalidArgumentException;
 use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Exception\NotSupportedException;
 use Yiisoft\Db\Expression\Expression;
 use Yiisoft\Db\Pdo\PdoValue;
+use Yiisoft\Db\Query\Data\DataReader;
 use Yiisoft\Db\Query\Query;
 use Yiisoft\Db\Transaction\TransactionInterface;
 

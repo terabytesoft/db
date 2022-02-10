@@ -8,9 +8,9 @@ use Iterator;
 use PDOException;
 use Throwable;
 use Yiisoft\Db\Connection\ConnectionInterface;
-use Yiisoft\Db\Data\DataReader;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\InvalidConfigException;
+use Yiisoft\Db\Query\Data\DataReader;
 
 use function current;
 use function key;
