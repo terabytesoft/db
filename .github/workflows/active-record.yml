@@ -19,15 +19,15 @@ on:
       - 'infection.json.dist'
       - 'psalm.xml'
 
-name: db-mssql
+name: build
 
 jobs:
   tests:
-    name: PHP ${{ matrix.php }}-mssql-${{ matrix.mssql }}
+    name: PHP ${{ matrix.php }}-active-record-${{ matrix.os }}
 
     env:
       COMPOSER_ROOT_VERSION: "dev-master"
-      extensions: pdo, pdo_sqlsrv-5.10.0-beta1
+      extensions: pdo, pdo_mysql, pdo_oci, pdo_pgsql, pdo_sqlite, pdo_sqlsrv-5.10.0-beta1
 
     runs-on: ${{ matrix.os }}
 
@@ -38,15 +38,33 @@ jobs:
 
         php:
           - 8.0
-          - 8.1
-
-        mssql:
-          - server:2017-latest
-          - server:2019-latest
 
     services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: true
+          MYSQL_PASSWORD: ''
+          MYSQL_DATABASE: yiitest
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+      oci:
+          image: wnameless/oracle-xe-11g-r2:latest
+          ports:
+              - 1521:1521
+          options: --name=oci
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: root
+          POSTGRES_PASSWORD: root
+          POSTGRES_DB: yiitest
+        ports:
+          - 5432:5432
+        options: --name=postgres --health-cmd="pg_isready" --health-interval=10s --health-timeout=5s --health-retries=3
       mssql:
-          image: mcr.microsoft.com/mssql/${{ matrix.mssql }}
+          image: mcr.microsoft.com/mssql/server:2019-latest
           env:
               SA_PASSWORD: YourStrong!Passw0rd
               ACCEPT_EULA: Y
@@ -70,8 +88,6 @@ jobs:
           ini-values: date.timezone='UTC'
           coverage: pcov
           tools: composer:v2, pecl
-        env:
-          update: true
 
       - name: Determine composer cache directory
         run: echo "COMPOSER_CACHE_DIR=$(composer config cache-dir)" >> $GITHUB_ENV
@@ -80,21 +96,20 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ${{ env.COMPOSER_CACHE_DIR }}
-          key: php${{ matrix.php }}-composer-${{ matrix.dependencies }}-${{ hashFiles('**/composer.json') }}
+          key: php${{ matrix.php }}-composer-${{ hashFiles('**/composer.json') }}
           restore-keys: |
-            php${{ matrix.php }}-composer-${{ matrix.dependencies }}-
-
+            php${{ matrix.php }}-composer-
       - name: Update composer
         run: composer self-update
 
-      - name: Install db-mssql
-        run: composer require terabytesoft/db-mssql --prefer-dist --no-interaction --no-progress --optimize-autoloader --ansi
+      - name: Install active-record
+        run: composer require terabytesoft/active-record --prefer-dist --no-interaction --no-progress --optimize-autoloader --ansi
 
-      - name: Run mssql tests with phpunit
-        run: vendor/bin/phpunit --testsuite Mssql --coverage-clover=coverage.xml --colors=always
+      - name: Run tests with phpunit with code coverage
+        run: vendor/bin/phpunit --testsuite ActiveRecord --coverage-clover=coverage.xml --colors=always
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.xml
+          file: ./coverage.xml
