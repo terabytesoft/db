@@ -9,8 +9,8 @@ use Yiisoft\Db\Exception\InvalidArgumentException;
 use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Exception\NotSupportedException;
 use Yiisoft\Db\Expression\ExpressionBuilderInterface;
-use Yiisoft\Db\Expression\ExpressionBuilderTrait;
 use Yiisoft\Db\Expression\ExpressionInterface;
+use Yiisoft\Db\Query\QueryBuilderInterface;
 
 use function count;
 use function implode;
@@ -22,7 +22,9 @@ use function reset;
  */
 class ConjunctionConditionBuilder implements ExpressionBuilderInterface
 {
-    use ExpressionBuilderTrait;
+    public function __construct(private QueryBuilderInterface $queryBuilder)
+    {
+    }
 
     public function build(ExpressionInterface $expression, array &$params = []): string
     {

@@ -9,9 +9,9 @@ use Yiisoft\Db\Exception\InvalidArgumentException;
 use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Exception\NotSupportedException;
 use Yiisoft\Db\Expression\ExpressionBuilderInterface;
-use Yiisoft\Db\Expression\ExpressionBuilderTrait;
 use Yiisoft\Db\Expression\ExpressionInterface;
 use Yiisoft\Db\Query\Query;
+use Yiisoft\Db\Query\QueryBuilderInterface;
 
 use function count;
 use function implode;
@@ -23,7 +23,9 @@ use function strpos;
  */
 class HashConditionBuilder implements ExpressionBuilderInterface
 {
-    use ExpressionBuilderTrait;
+    public function __construct(private QueryBuilderInterface $queryBuilder)
+    {
+    }
 
     public function build(ExpressionInterface $expression, array &$params = []): string
     {
@@ -36,7 +38,7 @@ class HashConditionBuilder implements ExpressionBuilderInterface
                 $parts[] = $this->queryBuilder->buildCondition(new InCondition($column, 'IN', $value), $params);
             } else {
                 if (strpos($column, '(') === false) {
-                    $column = $this->queryBuilder->getQuoter()->quoteColumnName($column);
+                    $column = $this->queryBuilder->quoter()->quoteColumnName($column);
                 }
                 if ($value === null) {
                     $parts[] = "$column IS NULL";

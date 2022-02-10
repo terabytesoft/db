@@ -423,7 +423,7 @@ abstract class Command implements CommandInterface
     {
         $sql = $this->getSql();
 
-        [$profile, $rawSql] = $this->logQuery(__METHOD__);
+        [, $rawSql] = $this->logQuery(__METHOD__);
 
         if ($sql === '') {
             return 0;

@@ -8,6 +8,7 @@ use Throwable;
 use Yiisoft\Db\Cache\SchemaCache;
 use Yiisoft\Db\Constraint\ConstraintSchemaInterface;
 use Yiisoft\Db\Exception\Exception;
+use Yiisoft\Db\Exception\InvalidCallException;
 use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Exception\NotSupportedException;
 
@@ -38,6 +39,19 @@ interface SchemaInterface extends ConstraintSchemaInterface
     public function getDefaultSchema(): ?string;
 
     /**
+     * Returns the ID of the last inserted row or sequence value.
+     *
+     * @param string $sequenceName name of the sequence object (required by some DBMS)
+     *
+     * @throws InvalidCallException if the DB connection is not active
+     *
+     * @return string the row ID of the last row inserted, or the last value retrieved from the sequence object
+     *
+     * @see http://www.php.net/manual/en/function.PDO-lastInsertId.php
+     */
+    public function getLastInsertID(string $sequenceName = ''): string;
+
+    /**
      * Determines the PDO type for the given PHP data value.
      *
      * @param mixed $data The data whose PDO type is to be determined
@@ -46,7 +60,7 @@ interface SchemaInterface extends ConstraintSchemaInterface
      *
      * @link http://www.php.net/manual/en/pdo.constants.php
      */
-    public function getPdoType($data): int;
+    public function getPdoType(mixed $data): int;
 
     /**
      * Returns the actual name of a given table name.

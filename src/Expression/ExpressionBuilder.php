@@ -11,8 +11,6 @@ use function array_merge;
  */
 class ExpressionBuilder implements ExpressionBuilderInterface
 {
-    use ExpressionBuilderTrait;
-
     public function build(ExpressionInterface $expression, array &$params = []): string
     {
         $params = array_merge($params, $expression->getParams());

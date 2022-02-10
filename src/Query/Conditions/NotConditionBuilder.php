@@ -6,15 +6,17 @@ namespace Yiisoft\Db\Query\Conditions;
 
 use Yiisoft\Db\Exception\InvalidArgumentException;
 use Yiisoft\Db\Expression\ExpressionBuilderInterface;
-use Yiisoft\Db\Expression\ExpressionBuilderTrait;
 use Yiisoft\Db\Expression\ExpressionInterface;
+use Yiisoft\Db\Query\QueryBuilderInterface;
 
 /**
  * Class NotConditionBuilder builds objects of {@see NotCondition}.
  */
 class NotConditionBuilder implements ExpressionBuilderInterface
 {
-    use ExpressionBuilderTrait;
+    public function __construct(private QueryBuilderInterface $queryBuilder)
+    {
+    }
 
     public function build(ExpressionInterface $expression, array &$params = []): string
     {

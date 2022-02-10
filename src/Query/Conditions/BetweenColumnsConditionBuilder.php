@@ -10,9 +10,9 @@ use Yiisoft\Db\Exception\InvalidArgumentException;
 use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Exception\NotSupportedException;
 use Yiisoft\Db\Expression\ExpressionBuilderInterface;
-use Yiisoft\Db\Expression\ExpressionBuilderTrait;
 use Yiisoft\Db\Expression\ExpressionInterface;
 use Yiisoft\Db\Query\Query;
+use Yiisoft\Db\Query\QueryBuilderInterface;
 
 use function strpos;
 
@@ -21,7 +21,9 @@ use function strpos;
  */
 class BetweenColumnsConditionBuilder implements ExpressionBuilderInterface
 {
-    use ExpressionBuilderTrait;
+    public function __construct(private QueryBuilderInterface $queryBuilder)
+    {
+    }
 
     public function build(ExpressionInterface $expression, array &$params = []): string
     {
@@ -57,7 +59,7 @@ class BetweenColumnsConditionBuilder implements ExpressionBuilderInterface
         }
 
         if (strpos($columnName, '(') === false) {
-            return $this->queryBuilder->getQuoter()->quoteColumnName($columnName);
+            return $this->queryBuilder->quoter()->quoteColumnName($columnName);
         }
 
         return $columnName;

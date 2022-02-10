@@ -37,13 +37,13 @@ final class PDODriver implements DriverInterface
     }
 
     /**
-     * The charset used for database connection. The property is only used for MySQL, PostgreSQL databases. Defaults to
+     * The charset used for database connection. The property is only used for MySQL, PostgresSQL databases. Defaults to
      * null, meaning using default charset as configured by the database.
      *
      * For Oracle Database, the charset must be specified in the {@see dsn}, for example for UTF-8 by appending
      * `;charset=UTF-8` to the DSN string.
      *
-     * The same applies for if you're using GBK or BIG5 charset with MySQL, then it's highly recommended to specify
+     * The same applies for if you're using GBK or BIG5 charset with MySQL, then it's highly recommended specifying
      * charset via {@see dsn} like `'mysql:dbname=mydatabase;host=127.0.0.1;charset=GBK;'`.
      *
      * @param string|null $charset
@@ -55,7 +55,7 @@ final class PDODriver implements DriverInterface
 
     /**
      * Returns the charset currently used for database connection. The returned charset is only applicable for MySQL,
-     * PostgreSQL databases.
+     * PostgresSQL databases.
      *
      * @return string|null the charset of the pdo instance. Null is returned if the charset is not set yet or not
      * supported by the pdo driver

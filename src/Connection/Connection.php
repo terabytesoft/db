@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Connection;
 
-use PDOException;
 use Psr\Log\LogLevel;
 use Throwable;
 use Yiisoft\Cache\Dependency\Dependency;
@@ -296,7 +295,7 @@ abstract class Connection implements ConnectionInterface
              */
             try {
                 $transaction->rollBack();
-            } catch (Exception $e) {
+            } catch (\Exception $e) {
                 if ($this->logger !== null) {
                     $this->logger->log(LogLevel::ERROR, $e, [__METHOD__]);
                     /** hide this exception to be able to continue throwing original exception outside */

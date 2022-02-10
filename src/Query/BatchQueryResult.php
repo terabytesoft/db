@@ -217,10 +217,8 @@ class BatchQueryResult implements Iterator
 
     /**
      * {@see Query}
-     *
-     * @return Query
      */
-    public function getQuery(): Query
+    public function getQuery(): Query|null
     {
         return $this->query;
     }

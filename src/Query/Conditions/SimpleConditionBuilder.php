@@ -9,8 +9,8 @@ use Yiisoft\Db\Exception\InvalidArgumentException;
 use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Exception\NotSupportedException;
 use Yiisoft\Db\Expression\ExpressionBuilderInterface;
-use Yiisoft\Db\Expression\ExpressionBuilderTrait;
 use Yiisoft\Db\Expression\ExpressionInterface;
+use Yiisoft\Db\Query\QueryBuilderInterface;
 
 use function is_string;
 use function strpos;
@@ -20,7 +20,9 @@ use function strpos;
  */
 class SimpleConditionBuilder implements ExpressionBuilderInterface
 {
-    use ExpressionBuilderTrait;
+    public function __construct(private QueryBuilderInterface $queryBuilder)
+    {
+    }
 
     public function build(ExpressionInterface $expression, array &$params = []): string
     {
@@ -31,7 +33,7 @@ class SimpleConditionBuilder implements ExpressionBuilderInterface
         if ($column instanceof ExpressionInterface) {
             $column = $this->queryBuilder->buildExpression($column, $params);
         } elseif (is_string($column) && strpos($column, '(') === false) {
-            $column = $this->queryBuilder->getQuoter()->quoteColumnName($column);
+            $column = $this->queryBuilder->quoter()->quoteColumnName($column);
         }
 
         if ($value === null) {

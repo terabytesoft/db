@@ -316,10 +316,10 @@ class Query implements QueryInterface, ExpressionInterface
      *
      * @throws Exception|InvalidConfigException|Throwable
      *
-     * @return mixed number of records. The result may be a string depending on the underlying database engine and to
-     * support integer values higher than a 32bit PHP integer can handle.
+     * @return false|int|null|string number of records. The result may be a string depending on the underlying database
+     * engine and to support integer values higher than a 32bit PHP integer can handle.
      */
-    public function count(string $q = '*')
+    public function count(string $q = '*'): false|int|null|string
     {
         if ($this->emulateExecution) {
             return 0;

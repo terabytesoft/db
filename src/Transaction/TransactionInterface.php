@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Yiisoft\Db\Transaction;
 
+use Psr\Log\LoggerAwareInterface;
 use Throwable;
 use Yiisoft\Db\Exception\Exception;
 use Yiisoft\Db\Exception\InvalidConfigException;
 use Yiisoft\Db\Exception\NotSupportedException;
 
-interface TransactionInterface
+interface TransactionInterface extends LoggerAwareInterface
 {
     /**
      * Begins a transaction.
@@ -20,10 +21,10 @@ interface TransactionInterface
      *
      * If not specified (`null`) the isolation level will not be set explicitly and the DBMS default will be used.
      *
-     * > Note: This setting does not work for PostgreSQL, where setting the isolation level before the transaction has
+     * > Note: This setting does not work for PostgresSQL, where setting the isolation level before the transaction has
      * no effect. You have to call {@see setIsolationLevel()} in this case after the transaction has started.
      *
-     * > Note: Some DBMS allow setting of the isolation level only for the whole connection so subsequent transactions
+     * > Note: Some (DBMS) allow setting of the isolation level only for the whole connection so subsequent transactions
      * may get the same isolation level even if you did not specify any. When using this feature you may need to set the
      * isolation level for all transactions explicitly to avoid conflicting settings.
      * At the time of this writing affected DBMS are MSSQL and SQLite.
@@ -65,7 +66,7 @@ interface TransactionInterface
      * Sets the transaction isolation level for this transaction.
      *
      * This method can be used to set the isolation level while the transaction is already active.
-     * However this is not supported by all DBMS so you might rather specify the isolation level directly when calling
+     * However, this is not supported by all DBMS, so you might rather specify the isolation level directly when calling
      * {@see begin()}.
      *
      * @param string $level The transaction isolation level to use for this transaction.

@@ -184,7 +184,7 @@ abstract class Schema implements SchemaInterface
         return $this->defaultSchema;
     }
 
-    public function getPdoType($data): int
+    public function getPdoType(mixed $data): int
     {
         static $typeMap = [
             // php type => PDO type
