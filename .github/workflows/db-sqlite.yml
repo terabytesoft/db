@@ -50,7 +50,7 @@ jobs:
           php-version: ${{ matrix.php }}
           extensions: ${{ env.extensions }}
           ini-values: date.timezone='UTC'
-          coverage: pcov
+          coverage: xdebug
           tools: composer:v2, pecl
         env:
           update: true
@@ -80,14 +80,8 @@ jobs:
       - name: Run sqlite tests with phpunit
         run: vendor/bin/phpunit --testsuite Sqlite --coverage-clover=coverage.clover --colors=always
 
-      - name: Upload Coverage Report
-        uses: actions/upload-artifact@v2
-        with:
-          name: Coverage Report
-          path: ./coverage.xml
-
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.xml
+          files: ./coverage.xml
