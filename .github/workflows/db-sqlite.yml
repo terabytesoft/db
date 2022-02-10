@@ -19,15 +19,15 @@ on:
       - 'infection.json.dist'
       - 'psalm.xml'
 
-name: db-pgsql
+name: db-sqlite
 
 jobs:
   tests:
-    name: PHP ${{ matrix.php }}-pgsql-${{ matrix.pgsql }}
+    name: PHP ${{ matrix.php }}-sqlite
 
     env:
       COMPOSER_ROOT_VERSION: "dev-master"
-      extensions: pdo, pdo_pgsql
+      extensions: pdo, pdo_sqlite
 
     runs-on: ${{ matrix.os }}
 
@@ -35,29 +35,10 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
+          - windows-latest
 
         php:
           - 8.0
-          - 8.1
-
-        pgsql:
-          - 9
-          - 10
-          - 11
-          - 12
-          - 13
-          - 14
-
-    services:
-      postgres:
-        image: postgres:${{ matrix.pgsql }}
-        env:
-          POSTGRES_USER: root
-          POSTGRES_PASSWORD: root
-          POSTGRES_DB: yiitest
-        ports:
-          - 5432:5432
-        options: --name=postgres --health-cmd="pg_isready" --health-interval=10s --health-timeout=5s --health-retries=3
 
     steps:
       - name: Checkout
@@ -70,6 +51,7 @@ jobs:
           extensions: ${{ env.extensions }}
           ini-values: date.timezone='UTC'
           coverage: pcov
+          tools: composer:v2, pecl
         env:
           update: true
 
@@ -87,11 +69,11 @@ jobs:
       - name: Update composer
         run: composer self-update
 
-      - name: Install db-pgsql
-        run: composer require terabytesoft/db-pgsql --prefer-dist --no-interaction --no-progress --optimize-autoloader --ansi
+      - name: Install db-sqlite
+        run: composer require terabytesoft/db-sqlite --prefer-dist --no-interaction --no-progress --optimize-autoloader --ansi
 
-      - name: Run pgsql tests with phpunit
-        run: vendor/bin/phpunit --testsuite Pgsql --coverage-clover=coverage.clover --colors=always
+      - name: Run sqlite tests with phpunit
+        run: vendor/bin/phpunit --testsuite Sqlite --coverage-clover=coverage.clover --colors=always
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v2
