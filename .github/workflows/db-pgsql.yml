@@ -91,7 +91,7 @@ jobs:
         run: composer require terabytesoft/db-pgsql --prefer-dist --no-interaction --no-progress --optimize-autoloader --ansi
 
       - name: Run pgsql tests with phpunit
-        run: vendor/bin/phpunit --testsuite Pgsql --coverage-clover=coverage.clover --colors=always
+        run: vendor/bin/phpunit --testsuite Pgsql --coverage-clover=coverage.xml --colors=always
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v2.1.0
