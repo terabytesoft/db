@@ -63,7 +63,7 @@ jobs:
           php-version: ${{ matrix.php }}
           extensions: ${{ env.extensions }}
           ini-values: date.timezone='UTC'
-          coverage: xdebug
+          coverage: pcov
         env:
           update: true
 
@@ -88,7 +88,7 @@ jobs:
         run: vendor/bin/phpunit --testsuite Mysql --coverage-clover=coverage.clover --colors=always
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v2
+        uses: codecov/codecov-action@v2.1.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
